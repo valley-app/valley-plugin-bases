@@ -1,0 +1,4 @@
+node_modules/
+.plugin-build-*/
+coverage/
+.DS_Store

@@ -1,0 +1,55 @@
+{
+  "icon": "icon.svg",
+  "main": "runtime/index.js",
+  "indexState": "scoped",
+  "fileViews": {
+    ".base": {
+      "view": "bases.editor"
+    }
+  },
+  "provides": [
+    {
+      "id": "newTab.entry",
+      "kind": "extension",
+      "version": "1.0.0"
+    },
+    {
+      "id": "fileTree.contextItem",
+      "kind": "extension",
+      "version": "1.0.0"
+    },
+    {
+      "id": "workspace.details",
+      "kind": "extension",
+      "version": "1.0.0"
+    },
+    {
+      "id": "workspace.bookmark",
+      "kind": "service",
+      "version": "1.0.0"
+    },
+    {
+      "id": "workspace.surface",
+      "kind": "extension",
+      "version": "1.0.0"
+    }
+  ],
+  "locales": {
+    "en": "runtime/locales/en.json",
+    "de": "runtime/locales/de.json",
+    "es": "runtime/locales/es.json",
+    "fr": "runtime/locales/fr.json",
+    "zh-CN": "runtime/locales/zh-CN.json"
+  },
+  "runtime": {
+    "ui": "runtime/index.js",
+    "backend": "runtime/backend.js"
+  },
+  "permissions": {
+    "network": {
+      "hosts": [
+        "tiles.openfreemap.org"
+      ]
+    }
+  }
+}
