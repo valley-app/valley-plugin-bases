@@ -2,7 +2,7 @@
   "apiVersion": 5,
   "id": "bases",
   "name": "Bases",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Database views of vault files and their properties, with filters, formulas, tables, cards, and lists.",
   "author": [
     "valley"

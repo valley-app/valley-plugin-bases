@@ -43,13 +43,420 @@
   },
   "runtime": {
     "ui": "runtime/index.js",
-    "backend": "runtime/backend.js"
+    "backend": "runtime/backend.js",
+    "services": [
+      {
+        "id": "command.base.read",
+        "version": "1.0.0",
+        "method": "base.read",
+        "operation": true,
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        },
+        "metadata": {
+          "command": {
+            "id": "file.read",
+            "description": "Read a Base file and its revision baseline",
+            "effect": "read",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 6,
+                  "maxLength": 4096,
+                  "pattern": "\\.base$"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            },
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "baseline": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mtimeMs": {
+                          "type": "number"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "hash": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mtimeMs",
+                        "size",
+                        "hash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "content",
+                "baseline"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      {
+        "id": "command.base.create",
+        "version": "1.0.0",
+        "method": "base.create",
+        "operation": true,
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        },
+        "metadata": {
+          "command": {
+            "id": "file.create",
+            "description": "Create a new Base file without replacing an existing file",
+            "effect": "write",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 6,
+                  "maxLength": 4096,
+                  "pattern": "\\.base$"
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 750000
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            },
+            "result": "driver",
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "baseline": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mtimeMs": {
+                          "type": "number"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "hash": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mtimeMs",
+                        "size",
+                        "hash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "baseline"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      {
+        "id": "command.base.write",
+        "version": "1.0.0",
+        "method": "command.base.write",
+        "operation": true,
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        },
+        "metadata": {
+          "command": {
+            "id": "file.write",
+            "description": "Replace Base YAML only when its reviewed revision baseline matches",
+            "effect": "write",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 6,
+                  "maxLength": 4096,
+                  "pattern": "\\.base$"
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 750000
+                },
+                "expected": {
+                  "type": "object",
+                  "properties": {
+                    "mtimeMs": {
+                      "type": "number"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "hash": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "mtimeMs",
+                    "size",
+                    "hash"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "path",
+                "content",
+                "expected"
+              ],
+              "additionalProperties": false
+            },
+            "result": "command",
+            "revisionMethod": "command.base.revision",
+            "undoMethod": "command.base.undo",
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "baseline": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mtimeMs": {
+                          "type": "number"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "hash": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mtimeMs",
+                        "size",
+                        "hash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "baseline"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      {
+        "id": "command.base.patch",
+        "version": "1.0.0",
+        "method": "command.base.patch",
+        "operation": true,
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        },
+        "metadata": {
+          "command": {
+            "id": "file.patch",
+            "description": "Patch Base configuration or one view while preserving unrelated YAML",
+            "effect": "write",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 6,
+                  "maxLength": 4096,
+                  "pattern": "\\.base$"
+                },
+                "view": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "patch": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "expected": {
+                  "type": "object",
+                  "properties": {
+                    "mtimeMs": {
+                      "type": "number"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "hash": {
+                      "type": "string",
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "mtimeMs",
+                    "size",
+                    "hash"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "path",
+                "patch",
+                "expected"
+              ],
+              "additionalProperties": false
+            },
+            "result": "command",
+            "revisionMethod": "command.base.revision",
+            "undoMethod": "command.base.undo",
+            "outputSchema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "baseline": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mtimeMs": {
+                          "type": "number"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "hash": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mtimeMs",
+                        "size",
+                        "hash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path",
+                "baseline"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      {
+        "id": "command.base.revision",
+        "version": "1.0.0",
+        "method": "command.base.revision",
+        "operation": true,
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        }
+      },
+      {
+        "id": "command.base.undo",
+        "version": "1.0.0",
+        "method": "command.base.undo",
+        "operation": true,
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        }
+      }
+    ]
   },
   "permissions": {
     "network": {
       "hosts": [
         "tiles.openfreemap.org"
       ]
+    },
+    "storage": {
+      "vault": true
     }
   }
 }
