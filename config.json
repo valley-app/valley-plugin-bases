@@ -446,7 +446,705 @@
         "response": {
           "type": "unknown"
         }
+      },
+      {
+        "id": "workflow.provider",
+        "version": "1.0.0",
+        "method": "workflow.execute",
+        "operation": true,
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        },
+        "metadata": {
+          "workflow": {
+            "providerId": "bases",
+            "providerVersion": "1.0.0",
+            "nodes": [
+              {
+                "id": "file.read",
+                "type": "action",
+                "version": "1.0.0",
+                "displayName": "Read a Base file and its revision baseline",
+                "description": "Read a Base file and its revision baseline. Uses the owning plugin backend and its existing grants and revision checks.",
+                "effect": "read",
+                "idempotent": true,
+                "executionMode": "item",
+                "inputs": [
+                  {
+                    "id": "input",
+                    "label": "Input",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object"
+                    }
+                  }
+                ],
+                "outputs": [
+                  {
+                    "id": "output",
+                    "label": "Result",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "baseline": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "mtimeMs": {
+                                  "type": "number"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "hash": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mtimeMs",
+                                "size",
+                                "hash"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content",
+                        "baseline"
+                      ],
+                      "additionalProperties": false,
+                      "$schema": "http://json-schema.org/draft-07/schema#"
+                    }
+                  }
+                ],
+                "parameterSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 6,
+                      "maxLength": 4096,
+                      "pattern": "\\.base$",
+                      "title": "path",
+                      "ui": {
+                        "control": "text"
+                      }
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "inputSchema": {
+                  "type": "object"
+                },
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "baseline": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mtimeMs": {
+                              "type": "number"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "hash": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "mtimeMs",
+                            "size",
+                            "hash"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content",
+                    "baseline"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "readiness": {
+                  "state": "Available"
+                }
+              },
+              {
+                "id": "file.create",
+                "type": "action",
+                "version": "1.0.0",
+                "displayName": "Create a new Base file without replacing an existing file",
+                "description": "Create a new Base file without replacing an existing file. Uses the owning plugin backend and its existing grants and revision checks.",
+                "effect": "write",
+                "idempotent": false,
+                "executionMode": "item",
+                "inputs": [
+                  {
+                    "id": "input",
+                    "label": "Input",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object"
+                    }
+                  }
+                ],
+                "outputs": [
+                  {
+                    "id": "output",
+                    "label": "Result",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "baseline": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "mtimeMs": {
+                                  "type": "number"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "hash": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mtimeMs",
+                                "size",
+                                "hash"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "baseline"
+                      ],
+                      "additionalProperties": false,
+                      "$schema": "http://json-schema.org/draft-07/schema#"
+                    }
+                  }
+                ],
+                "parameterSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 6,
+                      "maxLength": 4096,
+                      "pattern": "\\.base$",
+                      "title": "path",
+                      "ui": {
+                        "control": "text"
+                      }
+                    },
+                    "content": {
+                      "type": "string",
+                      "maxLength": 750000,
+                      "title": "content",
+                      "ui": {
+                        "control": "textarea"
+                      }
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "inputSchema": {
+                  "type": "object"
+                },
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "baseline": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mtimeMs": {
+                              "type": "number"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "hash": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "mtimeMs",
+                            "size",
+                            "hash"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "baseline"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "readiness": {
+                  "state": "Available"
+                }
+              },
+              {
+                "id": "file.write",
+                "type": "action",
+                "version": "1.0.0",
+                "displayName": "Replace Base YAML only when its reviewed revision baseline matches",
+                "description": "Replace Base YAML only when its reviewed revision baseline matches. Uses the owning plugin backend and its existing grants and revision checks.",
+                "effect": "write",
+                "idempotent": false,
+                "executionMode": "item",
+                "inputs": [
+                  {
+                    "id": "input",
+                    "label": "Input",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object"
+                    }
+                  }
+                ],
+                "outputs": [
+                  {
+                    "id": "output",
+                    "label": "Result",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "baseline": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "mtimeMs": {
+                                  "type": "number"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "hash": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mtimeMs",
+                                "size",
+                                "hash"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "baseline"
+                      ],
+                      "additionalProperties": false,
+                      "$schema": "http://json-schema.org/draft-07/schema#"
+                    }
+                  }
+                ],
+                "parameterSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 6,
+                      "maxLength": 4096,
+                      "pattern": "\\.base$",
+                      "title": "path",
+                      "ui": {
+                        "control": "text"
+                      }
+                    },
+                    "content": {
+                      "type": "string",
+                      "maxLength": 750000,
+                      "title": "content",
+                      "ui": {
+                        "control": "textarea"
+                      }
+                    },
+                    "expected": {
+                      "type": "object",
+                      "properties": {
+                        "mtimeMs": {
+                          "type": "number",
+                          "title": "mtimeMs",
+                          "ui": {
+                            "control": "number",
+                            "step": 0.01
+                          }
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "title": "size",
+                          "ui": {
+                            "control": "number",
+                            "step": 1
+                          }
+                        },
+                        "hash": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "title": "hash",
+                          "ui": {
+                            "control": "text"
+                          }
+                        }
+                      },
+                      "required": [
+                        "mtimeMs",
+                        "size",
+                        "hash"
+                      ],
+                      "additionalProperties": false,
+                      "title": "expected"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content",
+                    "expected"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "inputSchema": {
+                  "type": "object"
+                },
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "baseline": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mtimeMs": {
+                              "type": "number"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "hash": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "mtimeMs",
+                            "size",
+                            "hash"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "baseline"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "readiness": {
+                  "state": "Available"
+                }
+              },
+              {
+                "id": "file.patch",
+                "type": "action",
+                "version": "1.0.0",
+                "displayName": "Patch Base configuration or one view while preserving unrelated YAML",
+                "description": "Patch Base configuration or one view while preserving unrelated YAML. Uses the owning plugin backend and its existing grants and revision checks.",
+                "effect": "write",
+                "idempotent": false,
+                "executionMode": "item",
+                "inputs": [
+                  {
+                    "id": "input",
+                    "label": "Input",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object"
+                    }
+                  }
+                ],
+                "outputs": [
+                  {
+                    "id": "output",
+                    "label": "Result",
+                    "dataType": "json",
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "baseline": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "mtimeMs": {
+                                  "type": "number"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "hash": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mtimeMs",
+                                "size",
+                                "hash"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "baseline"
+                      ],
+                      "additionalProperties": false,
+                      "$schema": "http://json-schema.org/draft-07/schema#"
+                    }
+                  }
+                ],
+                "parameterSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 6,
+                      "maxLength": 4096,
+                      "pattern": "\\.base$",
+                      "title": "path",
+                      "ui": {
+                        "control": "text"
+                      }
+                    },
+                    "view": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0,
+                      "title": "view"
+                    },
+                    "patch": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "title": "patch"
+                    },
+                    "expected": {
+                      "type": "object",
+                      "properties": {
+                        "mtimeMs": {
+                          "type": "number",
+                          "title": "mtimeMs",
+                          "ui": {
+                            "control": "number",
+                            "step": 0.01
+                          }
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "title": "size",
+                          "ui": {
+                            "control": "number",
+                            "step": 1
+                          }
+                        },
+                        "hash": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "title": "hash",
+                          "ui": {
+                            "control": "text"
+                          }
+                        }
+                      },
+                      "required": [
+                        "mtimeMs",
+                        "size",
+                        "hash"
+                      ],
+                      "additionalProperties": false,
+                      "title": "expected"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "patch",
+                    "expected"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "inputSchema": {
+                  "type": "object"
+                },
+                "outputSchema": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "baseline": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "mtimeMs": {
+                              "type": "number"
+                            },
+                            "size": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "hash": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "mtimeMs",
+                            "size",
+                            "hash"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "baseline"
+                  ],
+                  "additionalProperties": false,
+                  "$schema": "http://json-schema.org/draft-07/schema#"
+                },
+                "readiness": {
+                  "state": "Available"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "workflow.catalog",
+        "version": "1.0.0",
+        "method": "workflow.catalog",
+        "request": {
+          "type": "unknown"
+        },
+        "response": {
+          "type": "unknown"
+        },
+        "operation": true
       }
+    ],
+    "largeDataOperations": [
+      "workflow.execute"
     ]
   },
   "permissions": {
@@ -457,6 +1155,7 @@
     },
     "storage": {
       "vault": true
-    }
+    },
+    "largeData": true
   }
 }

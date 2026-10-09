@@ -2,6 +2,7 @@ import {
   NEW_TAB_ENTRY_V1,
   FILE_TREE_CONTEXT_ITEM_V1,
   type ValleyPluginApi,
+  type PluginCommand,
   type ValleyPluginModule,
 } from '@valley/plugin-sdk'
 import { React, initRuntime } from './runtime'
@@ -10,6 +11,7 @@ import { createBase, EMPTY_BASE } from './files'
 import { stores } from './store'
 import css from './styles'
 import { registerEditorDetails } from './editorViews'
+import { registerBaseViewCommands } from './viewActions'
 import { initLocalization } from './localization'
 
 export function register(api: ValleyPluginApi): () => Promise<void> {
@@ -24,10 +26,13 @@ export function register(api: ValleyPluginApi): () => Promise<void> {
     if (!session.isActive()) return
     void api.commands.executeOwn('create')
   }
+  const registerCreate = (command: PluginCommand<{ folder?: string }, { relPath: string }, 'write'> & { outputSchema: Record<string, unknown> }) => api.commands.register(command)
   const disposers = [
+    registerBaseViewCommands(session),
     registerEditorDetails(session),
-    api.commands.register({
+    registerCreate({
       id: 'create',
+      outputSchema: { type: 'object', properties: { relPath: { type: 'string', minLength: 1, maxLength: 4096 } }, required: ['relPath'], additionalProperties: false },
       label: 'Bases: Create new base',
       labelKey: 'bases.command.create',
       sideEffect: 'write',

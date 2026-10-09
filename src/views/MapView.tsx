@@ -5,6 +5,8 @@ import type { BaseCell, BaseColumn, BaseEvaluatedView, BaseRow } from '../engine
 import type { CellActions } from '../cells'
 import { Icon } from '../icons'
 import { GLYPHS } from '../glyphs'
+import { useBaseViewActions, noValue } from '../viewActions'
+import type { BaseController } from '../controller'
 import { openMenuAt } from '../menuKit'
 
 const LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/bright'
@@ -42,6 +44,7 @@ function parseCenter(value: unknown): [number, number] | null {
 
 const PROTOCOL = 'bases-map'
 let protocolRegistered = false
+let libraryLoader: Promise<typeof import('maplibre-gl')> | undefined
 
 /** The plugin frame has no network access; map resources go through the backend. */
 function registerNetworkProtocol(library: typeof import('maplibre-gl')): void {
@@ -205,7 +208,7 @@ function popupContent(point: Point, columns: BaseColumn[], hidden: Set<string>, 
   return container
 }
 
-export function MapView({ view, rows, actions, embedded }: { view: BaseEvaluatedView; rows: BaseRow[]; actions: CellActions; embedded: boolean }) {
+export function MapView({ controller, view, rows, actions, embedded }: { controller: BaseController; view: BaseEvaluatedView; rows: BaseRow[]; actions: CellActions; embedded: boolean }) {
   const container = React.useRef<HTMLDivElement>(null)
   const mapRef = React.useRef<MapLibre | null>(null)
   const [palette, setPalette] = React.useState('')
@@ -246,9 +249,15 @@ export function MapView({ view, rows, actions, embedded }: { view: BaseEvaluated
   const live = React.useRef({ points, columns: view.columns, hidden: new Set<string>(), actions })
   live.current = { points, columns: view.columns, hidden: new Set([coordinateKey, iconKey, colorKey].filter((key): key is string => Boolean(key))), actions }
 
+  const [camera, setCamera] = React.useState<unknown>(null)
+  useBaseViewActions(controller, {
+    ...Object.fromEntries(['map-zoom-in', 'map-zoom-out'].map(id => [id, { effect: 'write' as const, schema: noValue, state: [loaded, camera], run: () => { const map = mapRef.current; if (!map || !loaded) throw Object.assign(new Error('The owning Base map is not ready.'), { outcome: 'not-applied' }); if (id === 'map-zoom-in') map.zoomIn({ duration: 0 }); else map.zoomOut({ duration: 0 }); return { zoom: map.getZoom() } } }])),
+    'map-copy-coordinates': { effect: 'execute', schema: { enum: points.length ? points.map(point => point.row.id) : [''] }, state: points.map(point => [point.row.id, point.coordinates]), run: row => { const point = points.find(point => point.row.id === row); if (!point) throw Object.assign(new Error('The exact Base map marker is absent.'), { outcome: 'not-applied' }); return controller.api.ui.writeClipboardText(`${point.coordinates[0]}, ${point.coordinates[1]}`) } },
+  })
+
   React.useEffect(() => {
     let active = true
-    void import('maplibre-gl').then((module) => {
+    void (libraryLoader ??= import('maplibre-gl')).then((module) => {
       registerNetworkProtocol(module)
       if (active) setLibrary(module)
     })
@@ -323,9 +332,10 @@ export function MapView({ view, rows, actions, embedded }: { view: BaseEvaluated
       openMenuAt([
         { id: 'open', label: text('open'), onSelect: () => live.current.actions.openFile(point.row.id) },
         { id: 'open-tab', label: text('openInNewTab'), onSelect: () => void api.workspace.openFile(point.row.id, undefined, { newTab: true }) },
-        { id: 'copy-coordinates', label: text('copyCoordinates'), onSelect: () => void navigator.clipboard.writeText(`${lat}, ${lng}`) },
+        { id: 'copy-coordinates', label: text('copyCoordinates'), onSelect: () => void controller.api.ui.writeClipboardText(`${lat}, ${lng}`) },
       ], event.originalEvent.clientX, event.originalEvent.clientY)
     })
+    map.on('moveend', () => setCamera([map.getZoom(), map.getCenter().toArray()]))
     map.once('style.load', () => setLoaded(true))
     return () => { window.clearTimeout(hideTimer); popup?.remove(); map.remove(); mapRef.current = null; fitted.current = null; setLoaded(false) }
   }, [library, dark, Boolean(palette)])

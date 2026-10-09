@@ -25,7 +25,7 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
   }
   return {
     dispose,
-    newNote(filters: unknown[], relPath: string, columns: string[] = []): Promise<void> {
+    newNote(filters: unknown[], relPath: string, columns: string[] = [], beforeEffect?: (path: string) => Promise<void>, expectedPath?: string): Promise<void> {
       const accepted = structuredClone(filters)
       return accept(async () => {
         assertActive()
@@ -37,17 +37,28 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
         for (let n = 0; n < 1000; n++) {
           assertActive()
           const path = `${defaults.folder ? `${defaults.folder}/` : ''}Untitled${n ? ` ${n}` : ''}.md`
+          if (expectedPath !== undefined && path !== expectedPath) continue
+          await beforeEffect?.(path)
+          assertActive()
           const created = await api.vault.writeFileGuarded(path, output, null)
           if (created.ok) {
-            if (active && session.isActive()) await api.workspace.openFile(path, undefined, { newTab: false })
+            try {
+              assertActive()
+              await api.workspace.openFile(path, undefined, { newTab: false })
+              assertActive()
+            } catch (cause) {
+              throw Object.assign(new Error('The note was created but opening it has no confirmed acknowledgement.'), { outcome: 'unknown', retryable: false, cause })
+            }
             return
           }
           assertActive()
           if (created.reason === 'error') throw new Error('Could not create note')
+          if (expectedPath !== undefined) throw Object.assign(new Error('The exact new note destination is occupied.'), { outcome: 'not-applied' })
         }
+        throw Object.assign(new Error('All prospective note names are occupied.'), { outcome: 'not-applied' })
       })
     },
-    editProperty(path: string, key: string, value: unknown): Promise<void> {
+    editProperty(path: string, key: string, value: unknown, guard?: { expectedRevision: string; beforeEffect(): Promise<void> }): Promise<void> {
       const accepted = structuredClone(value)
       return accept(async () => {
         assertActive()
@@ -58,9 +69,11 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
         const metadata = parseDocument(match?.[1] ?? '{}')
         if (metadata.errors.length || !isMap(metadata.contents)) throw new Error('Invalid properties YAML')
         metadata.set(key.replace(/^note\./, ''), accepted)
-        const next = `---\n${metadata.toString()}---\n${file.content.slice(match?.[0].length ?? 0)}`
-        const result = await api.vault.writeTextDocumentGuarded(path, next, file.revisionToken)
-        if (!result.ok) throw new Error('The note changed or could not be saved. Your edit was not applied.')
+        const next = `---\n${metadata.toString({ flowCollectionPadding: false, lineWidth: 0 })}---\n${file.content.slice(match?.[0].length ?? 0)}`
+        await guard?.beforeEffect()
+        assertActive()
+        const result = await api.vault.writeTextDocumentGuarded(path, next, guard?.expectedRevision ?? file.revisionToken)
+        if (!result.ok) throw Object.assign(new Error(result.reason === 'error' ? 'The note save has no confirmed acknowledgement.' : 'The note changed. Your edit was not applied.'), { outcome: result.reason === 'error' ? 'unknown' : 'not-applied', retryable: false })
         let expectedRevision = result.revisionToken
         const replay = async (expected: string, content: string) => {
           if (!session.isActive()) return { ok: false, message: 'The base session has ended.' }

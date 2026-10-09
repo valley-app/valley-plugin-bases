@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createMockValleyApi } from '@valley/plugin-testkit'
-import type { PluginFileDraftSnapshot } from '@valley/plugin-sdk'
+import type { MountedPluginView, PluginEditorProvider, PluginFileDraftSnapshot } from '@valley/plugin-sdk'
 import { initRuntime } from '../src/runtime'
 import { baseStore } from '../src/store'
 import { EMPTY_BASE, createBase } from '../src/files'
@@ -15,6 +15,98 @@ function deferred() {
   return { promise, resolve }
 }
 const fixture = () => createMockValleyApi({ manifest: { id: 'bases' }, files: { 'Test.base': EMPTY_BASE, 'Note.md': '---\nprice: 1\n---\nKeep body\n' } })
+
+describe('mounted Base draft admission', () => {
+  const view = (mountId: string): MountedPluginView => ({ mountId, generation: 1, area: 'main', paneId: mountId, tabId: mountId, filePath: 'Test.base', pluginId: 'bases' })
+  it('rejects retained native source callbacks after the exact mounted controller detaches', async () => {
+    const mock = fixture()
+    const session = initRuntime(mock.api)
+    const hook = renderHook(() => useBaseController({ relPath: 'Test.base', mountedView: view('native') }))
+    await act(async () => { await hook.result.current.store!.load(); await session.index.ready() })
+    const previous = hook.result.current
+    const final = previous.store!.snapshot.content
+    hook.unmount()
+    expect(() => previous.editSource(EMPTY_BASE.replace('Table', 'Late'))).toThrow('closed')
+    await expect(previous.flushSource()).rejects.toThrow('closed')
+    expect(previous.store!.snapshot.content).toBe(final)
+    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    await previous.store!.dispose()
+  })
+  it.each([false, true])('reports its actual terminal draft after unregister with final dirty=%s and rejects late setters', async dirty => {
+    const mock = fixture()
+    const session = initRuntime(mock.api)
+    const store = baseStore('Test.base', undefined, session)
+    await store.load()
+    let provider!: PluginEditorProvider
+    Object.assign(mock.api.vault, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn() } })
+    const mounted = view('terminal'), raw = { revision: 0, dirty: false, active: true }
+    const off = store.attachEditor(mounted, () => raw, () => {})
+    expect(await provider.getSnapshot()).toMatchObject({ dirty: false, readiness: 'ready' })
+    if (dirty) store.edit(EMPTY_BASE.replace('Table', 'Final unreported'), true, mounted)
+    raw.active = false
+    off()
+    const terminal = await provider.getSnapshot()
+    expect(terminal).toMatchObject({ dirty, readiness: 'ready' })
+    const final = store.snapshot.content
+    expect(() => store.edit(EMPTY_BASE.replace('Table', 'Late'), true, mounted)).toThrow('closed')
+    expect(store.snapshot.content).toBe(final)
+    await store.dispose()
+    expect(await provider.getSnapshot()).toEqual(terminal)
+    expect(() => provider.prepare(terminal.revision, { operationId: 'late', fenceId: 'late', deadline: Date.now() + 5000, ownSave: false })).toThrow('changed or is unavailable')
+    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+  })
+  it('refuses raw configuration drafts and holds programmatic edits until Main releases the lease', async () => {
+    const mock = fixture()
+    const session = initRuntime(mock.api)
+    const store = baseStore('Test.base', undefined, session)
+    await store.load()
+    let provider!: PluginEditorProvider
+    Object.assign(mock.api.vault, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn() } })
+    const raw = { revision: 0, dirty: true, active: true }
+    const freeze = vi.fn()
+    const off = store.attachEditor(view('left'), () => raw, freeze)
+    const dirty = await provider.getSnapshot()
+    expect(() => provider.prepare(dirty.revision, { operationId: 'background', fenceId: 'fence', deadline: Date.now() + 5000, ownSave: false })).toThrow('changed or is unavailable')
+    raw.dirty = false; raw.revision++
+    const clean = await provider.getSnapshot()
+    const lease = await provider.prepare(clean.revision, { operationId: 'background', fenceId: 'fence', deadline: Date.now() + 5000, ownSave: false })
+    expect(() => store.edit(EMPTY_BASE.replace('Table', 'Blocked'), true, view('left'))).toThrow('prepared for another operation')
+    expect(store.snapshot.content).toBe(EMPTY_BASE)
+    expect(await lease.validate()).toEqual(clean)
+    await lease.release()
+    expect(freeze).toHaveBeenLastCalledWith(false)
+    off(); await store.dispose()
+    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+  })
+  it('saves one original pending payload and retains independent alias refusal in the opposite copy', async () => {
+    const mock = fixture()
+    const session = initRuntime(mock.api)
+    const store = baseStore('Test.base', undefined, session)
+    await store.load()
+    const providers = new Map<string, PluginEditorProvider>()
+    const write = mock.api.vault.writeFileGuarded
+    const save = vi.fn(async (target: MountedPluginView, content: string, expected: Parameters<typeof write>[2], revision: string) => {
+      const source = providers.get(target.mountId)!
+      const own = await source.prepare(revision, { operationId: 'save', fenceId: 'own', deadline: Date.now() + 5000, ownSave: true })
+      const other = providers.get('right')!
+      const observed = await other.getSnapshot()
+      expect(observed).toMatchObject({ dirty: false, readiness: 'ready' })
+      const opposite = await other.prepare(observed.revision, { operationId: 'save', fenceId: 'own', deadline: Date.now() + 5000, ownSave: false })
+      try { await own.validate(); await opposite.validate(); return await write(target.filePath, content, expected) }
+      finally { await opposite.release(); await own.release() }
+    })
+    Object.assign(mock.api.vault, { editors: { register: (target: MountedPluginView, value: PluginEditorProvider) => { providers.set(target.mountId, value); return () => { providers.delete(target.mountId) } }, save } })
+    const left = view('left'), right = view('right')
+    const offLeft = store.attachEditor(left, () => ({ revision: 0, dirty: false, active: true }), () => {})
+    const offRight = store.attachEditor(right, () => ({ revision: 0, dirty: false, active: true }), () => {})
+    store.edit(EMPTY_BASE.replace('Table', 'Exact pending'), true, left)
+    await store.flush()
+    expect(save).toHaveBeenCalledOnce()
+    expect(await mock.api.vault.readFile('Test.base')).toContain('Exact pending')
+    expect(await providers.get('left')!.getSnapshot()).toMatchObject({ dirty: false })
+    offLeft(); offRight(); await store.dispose()
+  })
+})
 
 describe('durable Base recovery', () => {
   it('holds fresh API hydration until the predecessor journal physically settles', async () => {

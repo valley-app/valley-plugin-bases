@@ -3,8 +3,10 @@ import { Icon } from './icons'
 import { IconButton, MenuButton, Picker, SearchField, useReorder, type PickerOption } from './menuKit'
 import type { BaseController } from './controller'
 import type { BaseEditableView } from './configuration'
-import { cellText, displayPropertyId, normalizePropertyId, rawCellText } from './engine/document'
+import { cellText, displayPropertyId, normalizePropertyId } from './engine/document'
 import type { BaseColumn } from './engine/types'
+import { useBaseViewActions, useLiveBaseController, noValue, stringValue } from './viewActions'
+import { baseResultTable, controllerActions } from './controllerActions'
 
 const VIEW_ICONS: Record<string, string> = { table: 'table', cards: 'layout-grid', list: 'list', map: 'map' }
 export const viewIcon = (type: string | undefined): string => VIEW_ICONS[type ?? 'table'] ?? 'file-question'
@@ -18,6 +20,7 @@ function uniqueName(names: string[], base: string): string {
 // ---- Views -------------------------------------------------------------------------
 
 export function ViewsMenu({ controller, close }: { controller: BaseController; close: () => void }) {
+  controller = useLiveBaseController(controller)
   const views = controller.raw.views
   const [query, setQuery] = React.useState('')
   const [editing, setEditing] = React.useState<number | null>(null)
@@ -27,6 +30,10 @@ export function ViewsMenu({ controller, close }: { controller: BaseController; c
     controller.viewsPatch(next)
     if (from === controller.index) controller.setActive(to)
   }, 'view')
+  useBaseViewActions(controller, {
+    'view-picker-search': { effect: 'write', schema: stringValue, state: query, run: value => setQuery(value) },
+    'configure-view-open': { effect: 'write', schema: { type: 'integer', minimum: 0, maximum: Math.max(0, views.length - 1) }, state: editing, run: value => setEditing(value) },
+  })
   if (editing !== null && views[editing]) return <ViewOptions controller={controller} index={editing} back={() => setEditing(null)} close={close} />
   const shown = views.map((view, index) => ({ view, index })).filter(({ view }) => (view.name ?? '').toLowerCase().includes(query.toLowerCase()))
   return (
@@ -82,6 +89,7 @@ function ViewOptions({ controller, index, back, close }: { controller: BaseContr
   const properties: PickerOption[] = [{ value: '', label: text('none') }, ...controller.available.filter((column) => column.kind !== 'file' || column.key === 'file.file').map((column) => ({ value: displayPropertyId(column.key), label: column.label }))]
   const type = view.type ?? 'table'
   const raw = (controller.raw.originalViews[index] ?? {}) as Record<string, unknown>
+  useBaseViewActions(controller, { ...controllerActions(controller, index), 'configure-view-back': { effect: 'write', schema: noValue, state: index, run: () => back() } })
   const nameError = !name.trim() ? text('emptyViewName') : views.some((item, i) => i !== index && item.name === name.trim()) ? text('duplicateViewName') : ''
   return (
     <div className="base-menu base-view-options">
@@ -193,20 +201,10 @@ function ViewOptions({ controller, index, back, close }: { controller: BaseContr
 // ---- Results -----------------------------------------------------------------------
 
 export function ResultsMenu({ controller, close }: { controller: BaseController; close: () => void }) {
+  controller = useLiveBaseController(controller)
   const view = controller.view!
   const [limit, setLimit] = React.useState(view.limit ? String(view.limit) : '')
-  const table = (): string[][] => {
-    const header = view.columns.map((column) => column.label)
-    const body = controller.rows.map((row) => view.columns.map((column) => {
-      if (column.kind === 'note') {
-        if (!row.hasFrontmatter) return ''
-        const shown = rawCellText(row.widgets[column.key] ?? 'text', row.raw[column.key])
-        return Array.isArray(shown) ? shown.join(', ') : shown
-      }
-      return cellText(row.cells[column.key])
-    }))
-    return [header, ...body]
-  }
+  const table = (): string[][] => baseResultTable(controller)
   const commit = (value: string): void => {
     const n = Number(value)
     controller.patch({ limit: value.trim() && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined })
@@ -223,7 +221,7 @@ export function ResultsMenu({ controller, close }: { controller: BaseController;
       <MenuButton icon="copy" label={text('copyToClipboard')} onClick={() => {
         const rows = table()
         const markdown = [`| ${rows[0].join(' | ')} |`, `| ${rows[0].map(() => '---').join(' | ')} |`, ...rows.slice(1).map((row) => `| ${row.map((cell) => cell.replace(/\|/g, '\\|')).join(' | ')} |`)].join('\n')
-        void navigator.clipboard.writeText(markdown)
+        void api.ui.writeClipboardText(markdown)
         close()
       }} />
       <MenuButton icon="file-down" label={text('exportCsv')} onClick={() => {
@@ -245,6 +243,7 @@ function directionLabels(column: BaseColumn | undefined): [string, string] {
 }
 
 export function SortMenu({ controller }: { controller: BaseController }) {
+  controller = useLiveBaseController(controller)
   const view = controller.view!
   const readonly = controller.readonly
   const [sort, setSort] = React.useState(view.sort.map((rule) => ({ ...rule })))
@@ -418,7 +417,7 @@ function buildSimple(filter: SimpleFilter, kind: string): string {
   return `${expression} ${filter.operator} ${literal(filter.value, kind)}`
 }
 
-function FilterRow({ value, label, controller, onChange, onRemove }: { value: string; label: string; controller: BaseController; onChange: (value: string) => void; onRemove: () => void }) {
+function FilterRow({ value, label, controller, onChange, onRemove, actionPath }: { value: string; label: string; controller: BaseController; onChange: (value: string) => void; onRemove: () => void; actionPath: string }) {
   const parsed = parseSimple(value)
   const [advanced, setAdvanced] = React.useState(!parsed && value !== '')
   const [draft, setDraft] = React.useState(value)
@@ -434,6 +433,17 @@ function FilterRow({ value, label, controller, onChange, onRemove }: { value: st
     setFilter(next)
     if (next.property) onChange(buildSimple(next, kindOf(next.property, properties.find((item) => item.key === next.property))))
   }
+  useBaseViewActions(controller, {
+    [`filter:${actionPath}:property`]: { effect: 'write', schema: { enum: [...new Set(properties.map(item => item.key))] }, state: filter, run: property => {
+      const nextOps = operatorsFor(kindOf(property, properties.find(item => item.key === property)))
+      commit({ ...filter, property, operator: nextOps.some(item => item.value === filter.operator) ? filter.operator : nextOps[0].value })
+    } },
+    [`filter:${actionPath}:operator`]: { effect: 'write', schema: { enum: operators.map(item => item.value) }, run: operator => commit({ ...filter, operator }) },
+    [`filter:${actionPath}:value`]: { effect: 'write', schema: stringValue, run: value => commit({ ...filter, value }) },
+    [`filter:${actionPath}:mode`]: { effect: 'write', schema: { enum: ['simple', 'advanced'] }, state: advanced, run: mode => { if (mode === 'simple') { const next = parseSimple(draft); if (!next) throw Object.assign(new Error('This expression cannot use the simple editor.'), { outcome: 'not-applied' }); setFilter(next); setAdvanced(false) } else { setDraft(value); setAdvanced(true) } } },
+    [`filter:${actionPath}:expression`]: { effect: 'write', schema: stringValue, state: draft, run: value => { setDraft(value); onChange(value) } },
+    [`filter:${actionPath}:remove`]: { effect: 'write', schema: noValue, run: () => onRemove() },
+  })
   return (
     <div className="base-filter-row">
       <span className="base-filter-conjunction">{label}</span>
@@ -474,10 +484,16 @@ function FilterRow({ value, label, controller, onChange, onRemove }: { value: st
   )
 }
 
-function FilterGroup({ value, controller, onChange, onRemove, nested }: { value: unknown; controller: BaseController; onChange: (value: FilterNode | undefined) => void; onRemove?: () => void; nested?: boolean }) {
+function FilterGroup({ value, controller, onChange, onRemove, nested, actionPath }: { value: unknown; controller: BaseController; onChange: (value: FilterNode | undefined) => void; onRemove?: () => void; nested?: boolean; actionPath: string }) {
   const { kind, items } = asGroup(value)
   const readonly = controller.readonly
   const publish = (nextKind: Conjunction, nextItems: FilterNode[]): void => onChange(nextItems.length || nested ? ({ [nextKind]: nextItems } as FilterNode) : undefined)
+  useBaseViewActions(controller, {
+    [`filter:${actionPath}:kind`]: { effect: 'write', schema: { enum: ['and', 'or', 'not'] }, state: value, run: next => publish(next, items) },
+    [`filter:${actionPath}:rule-add`]: { effect: 'write', schema: noValue, run: () => publish(kind, [...items, 'file.name == ""']) },
+    [`filter:${actionPath}:group-add`]: { effect: 'write', schema: noValue, run: () => publish(kind, [...items, { and: [] }]) },
+    ...(onRemove ? { [`filter:${actionPath}:remove`]: { effect: 'write' as const, schema: noValue, run: () => onRemove() } } : {}),
+  })
   const joiner = kind === 'or' || kind === 'not' ? text('joinOr') : text('joinAnd')
   return (
     <div className={`base-filter-group${nested ? ' is-nested' : ''}`}>
@@ -488,11 +504,11 @@ function FilterGroup({ value, controller, onChange, onRemove, nested }: { value:
         {onRemove && <IconButton icon="trash-2" label={text('remove')} disabled={readonly} onClick={onRemove} />}
       </div>
       {items.map((item, index) => typeof item === 'string' ? (
-        <FilterRow key={index} value={item} label={index === 0 ? text('where') : joiner} controller={controller}
+        <FilterRow key={index} actionPath={`${actionPath}.${index}`} value={item} label={index === 0 ? text('where') : joiner} controller={controller}
           onChange={(next) => publish(kind, items.map((existing, i) => (i === index ? next : existing)))}
           onRemove={() => publish(kind, items.filter((_, i) => i !== index))} />
       ) : (
-        <FilterGroup key={index} nested value={item} controller={controller}
+        <FilterGroup key={index} actionPath={`${actionPath}.${index}`} nested value={item} controller={controller}
           onChange={(next) => publish(kind, next === undefined ? items.filter((_, i) => i !== index) : items.map((existing, i) => (i === index ? next : existing)))}
           onRemove={() => publish(kind, items.filter((_, i) => i !== index))} />
       ))}
@@ -505,12 +521,14 @@ function FilterGroup({ value, controller, onChange, onRemove, nested }: { value:
 }
 
 export function FilterMenu({ controller }: { controller: BaseController }) {
+  controller = useLiveBaseController(controller)
   const view = controller.view!
   const [open, setOpen] = React.useState<{ all: boolean; view: boolean }>({ all: false, view: true })
   const sections = [
     { key: 'all' as const, label: text('allViews'), value: controller.raw.filters, save: (next: unknown) => controller.patch({ filters: next }, true) },
     { key: 'view' as const, label: text('thisView'), value: view.filters, save: (next: unknown) => controller.patch({ filters: next }) },
   ]
+  useBaseViewActions(controller, Object.fromEntries(sections.map(section => [`filter-section:${section.key}`, { effect: 'write' as const, schema: { type: 'boolean' }, state: open[section.key], run: (value: boolean) => setOpen({ ...open, [section.key]: value }) }])))
   return (
     <div className="base-menu base-filter-menu">
       {sections.map((section) => (
@@ -520,7 +538,7 @@ export function FilterMenu({ controller }: { controller: BaseController }) {
             <span>{section.label}</span>
             <span className="base-badge">{countFilters(section.value)}</span>
           </button>
-          {open[section.key] && <FilterGroup value={section.value} controller={controller} onChange={(next) => section.save(next)} />}
+          {open[section.key] && <FilterGroup actionPath={section.key} value={section.value} controller={controller} onChange={(next) => section.save(next)} />}
         </div>
       ))}
     </div>
@@ -530,6 +548,7 @@ export function FilterMenu({ controller }: { controller: BaseController }) {
 // ---- Properties ------------------------------------------------------------------
 
 export function PropertiesMenu({ controller }: { controller: BaseController }) {
+  controller = useLiveBaseController(controller)
   const view = controller.view!
   const readonly = controller.readonly
   const [query, setQuery] = React.useState('')
@@ -547,6 +566,11 @@ export function PropertiesMenu({ controller }: { controller: BaseController }) {
     controller.setOrder(next)
   }, 'property')
   const toggle = (key: string): void => controller.setOrder(visible.has(key) ? order.filter((item) => item !== key) : [...order, key])
+  useBaseViewActions(controller, {
+    'properties-query': { effect: 'write', schema: stringValue, state: query, run: value => setQuery(value) },
+    'property-options-open': { effect: 'write', schema: { enum: ordered.map(column => column.key) }, state: editing, run: value => setEditing(value) },
+    'property-create-from-query': { effect: 'write', schema: stringValue, run: value => { if (!value.trim()) throw Object.assign(new Error('A property name is required.'), { outcome: 'not-applied' }); controller.setOrder([...order, normalizePropertyId(value.trim())]); setQuery('') } },
+  })
   if (editing) return <PropertyOptions controller={controller} property={editing} back={() => setEditing(null)} />
   const exact = controller.available.some((column) => column.label.toLowerCase() === query.trim().toLowerCase() || displayPropertyId(column.key) === query.trim())
   return (
@@ -592,6 +616,7 @@ function PropertyOptions({ controller, property, back }: { controller: BaseContr
   const [displayName, setDisplayName] = React.useState(configured?.displayName ?? '')
   const [formula, setFormula] = React.useState(String((controller.raw.formulas ?? {})[formulaName] ?? ''))
   const [name, setName] = React.useState(formulaName)
+  useBaseViewActions(controller, { 'property-options-back': { effect: 'write', schema: noValue, state: [property, name, displayName, formula], run: () => back() } })
   return (
     <div className="base-menu base-property-options">
       <div className="base-menu-header">

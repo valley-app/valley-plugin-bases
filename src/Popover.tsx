@@ -5,6 +5,7 @@ export interface PopoverState {
   align: 'start' | 'end'
   render: (close: () => void) => React.ReactNode
   className?: string
+  guard?: (event: React.SyntheticEvent) => void
 }
 
 export function Popover({ state, onClose }: { state: PopoverState; onClose: () => void }) {
@@ -19,17 +20,20 @@ export function Popover({ state, onClose }: { state: PopoverState; onClose: () =
     void api.ui.openPopover(({ close }) => {
       dismiss = close
       if (disposed) { close(); return null }
-      return <div className="base-popover">{state.render(close)}</div>
+      return <div className="base-popover" onInputCapture={state.guard} onChangeCapture={state.guard} onFocusCapture={state.guard} onBlurCapture={state.guard} onPointerDownCapture={state.guard} onKeyDownCapture={state.guard}>{state.render(close)}</div>
     }, { anchor: state.anchor, align: state.align, gap: 4 }, options).finally(() => { if (!disposed) onClose() })
     return () => { disposed = true; dismiss?.() }
   }, [state, onClose])
   return null
 }
 
-export function usePopover() {
+export function usePopover(guard?: (event: React.SyntheticEvent) => void, changed?: (open: boolean) => void) {
   const [state, setState] = React.useState<PopoverState | null>(null)
-  const close = React.useCallback(() => setState(null), [])
-  const open = (anchor: HTMLElement, render: PopoverState['render'], options: { align?: 'start' | 'end'; className?: string } = {}): void =>
-    setState((current) => (current?.anchor === anchor ? null : { anchor, render, align: options.align ?? 'start', className: options.className }))
+  const close = React.useCallback(() => { changed?.(false); setState(null) }, [changed])
+  const open = (anchor: HTMLElement, render: PopoverState['render'], options: { align?: 'start' | 'end'; className?: string } = {}): void => {
+    const next = state?.anchor === anchor ? null : { anchor, render, align: options.align ?? 'start', className: options.className, guard }
+    changed?.(Boolean(next))
+    setState(next)
+  }
   return { state, open, close, node: state ? <Popover state={state} onClose={close} /> : null }
 }

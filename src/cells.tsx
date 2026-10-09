@@ -182,9 +182,25 @@ export interface PropertyEditorProps {
   /** Focus request from the grid (Enter / click on the cell). */
   editing: boolean
   onEditingChange: (editing: boolean) => void
+  /** Receives the open editor's own finish path so the grid can close it without a native blur. */
+  closeRef?: { current: (() => void) | null }
 }
 
 const jsonText = (value: unknown): string => (typeof value === 'string' ? value : value === null || value === undefined ? '' : JSON.stringify(value))
+
+function useFinish(editing: boolean, closeRef: PropertyEditorProps['closeRef'], finish: () => void) {
+  const done = React.useRef(false)
+  const latest = React.useRef(finish)
+  latest.current = finish
+  React.useEffect(() => { if (editing) done.current = false }, [editing])
+  React.useLayoutEffect(() => {
+    if (!closeRef || !editing) return
+    const close = (): void => latest.current()
+    closeRef.current = close
+    return () => { if (closeRef.current === close) closeRef.current = null }
+  }, [closeRef, editing])
+  return { claim: (): boolean => { if (done.current) return false; done.current = true; return true }, rearm: (): void => { done.current = false } }
+}
 
 function useCommit(onSave: (value: unknown) => Promise<void>) {
   const [error, setError] = React.useState('')
@@ -192,7 +208,7 @@ function useCommit(onSave: (value: unknown) => Promise<void>) {
   return { error, commit }
 }
 
-function TextEditor({ value, label, readonly, actions, onSave, editing, onEditingChange, numeric }: PropertyEditorProps & { numeric?: boolean }) {
+function TextEditor({ value, label, readonly, actions, onSave, editing, onEditingChange, closeRef, numeric }: PropertyEditorProps & { numeric?: boolean }) {
   const { error, commit } = useCommit(onSave)
   const [draft, setDraft] = React.useState('')
   const [invalid, setInvalid] = React.useState(false)
@@ -200,6 +216,7 @@ function TextEditor({ value, label, readonly, actions, onSave, editing, onEditin
   React.useEffect(() => { if (editing) { setDraft(jsonText(value)); setInvalid(false); cancelled.current = false } }, [editing])
   const isInvalidNumber = (current: string): boolean => current.trim() !== '' && !Number.isFinite(Number(current.trim()))
   const finish = (current: string): void => {
+    if (!guard.claim()) return
     onEditingChange(false)
     if (cancelled.current) return
     if (numeric) {
@@ -212,6 +229,7 @@ function TextEditor({ value, label, readonly, actions, onSave, editing, onEditin
     }
     if (current !== jsonText(value)) commit(current === '' && (value === null || value === undefined) ? value : current)
   }
+  const guard = useFinish(editing && !readonly, closeRef, () => finish(draft))
   if (editing && !readonly)
     return (
       <>
@@ -224,6 +242,7 @@ function TextEditor({ value, label, readonly, actions, onSave, editing, onEditin
           aria-invalid={invalid || undefined}
           value={draft}
           onChange={(event) => { setDraft(event.target.value); setInvalid(false) }}
+          onFocus={guard.rearm}
           onBlur={(event) => finish(event.currentTarget.value)}
           onKeyDown={(event) => {
             event.stopPropagation()
@@ -264,24 +283,29 @@ function CheckboxEditor({ value, label, readonly, onSave }: PropertyEditorProps)
   )
 }
 
-function DateEditor({ widget, value, label, readonly, onSave, editing, onEditingChange }: PropertyEditorProps) {
+function DateEditor({ widget, value, label, readonly, onSave, editing, onEditingChange, closeRef }: PropertyEditorProps) {
   const { error, commit } = useCommit(onSave)
   const time = widget === 'datetime'
   const raw = typeof value === 'string' ? value : ''
+  const inputValue = time ? raw.replace(' ', 'T').slice(0, 16) : raw.slice(0, 10)
+  const input = React.useRef<HTMLInputElement>(null)
+  const finish = (next: string): void => {
+    if (!guard.claim()) return
+    onEditingChange(false)
+    if (next !== inputValue) commit(next || null)
+  }
+  const guard = useFinish(editing && !readonly, closeRef, () => finish(input.current?.value ?? inputValue))
   if (editing && !readonly) {
-    const inputValue = time ? raw.replace(' ', 'T').slice(0, 16) : raw.slice(0, 10)
     return (
       <input
+        ref={input}
         className="base-cell-input"
         autoFocus
         type={time ? 'datetime-local' : 'date'}
         aria-label={label}
         defaultValue={inputValue}
-        onBlur={(event) => {
-          onEditingChange(false)
-          const next = event.target.value
-          if (next !== inputValue) commit(next || null)
-        }}
+        onFocus={guard.rearm}
+        onBlur={(event) => finish(event.target.value)}
         onKeyDown={(event) => {
           event.stopPropagation()
           if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
@@ -297,7 +321,7 @@ function DateEditor({ widget, value, label, readonly, onSave, editing, onEditing
   )
 }
 
-function ListEditor({ widget, value, label, readonly, actions, onSave, editing, onEditingChange }: PropertyEditorProps) {
+function ListEditor({ widget, value, label, readonly, actions, onSave, editing, onEditingChange, closeRef }: PropertyEditorProps) {
   const { error, commit } = useCommit(onSave)
   const items = (Array.isArray(value) ? value : value === null || value === undefined || value === '' ? [] : [value]).filter((item) => item !== null && item !== undefined)
   const [draft, setDraft] = React.useState('')
@@ -308,6 +332,7 @@ function ListEditor({ widget, value, label, readonly, actions, onSave, editing, 
     setDraft('')
     if (entry && !items.map(String).includes(entry)) save([...items, entry])
   }
+  const guard = useFinish(editing && !readonly, closeRef, () => { if (guard.claim()) { add(); onEditingChange(false) } })
   return (
     <span className="base-pills" title={error || undefined}>
       {items.map((item, index) => (
@@ -332,7 +357,8 @@ function ListEditor({ widget, value, label, readonly, actions, onSave, editing, 
           aria-label={label}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          onBlur={() => { add(); onEditingChange(false) }}
+          onFocus={guard.rearm}
+          onBlur={() => { if (guard.claim()) { add(); onEditingChange(false) } }}
           onKeyDown={(event) => {
             event.stopPropagation()
             if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); add() }

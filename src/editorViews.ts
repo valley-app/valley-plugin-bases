@@ -1,6 +1,7 @@
 import { WORKSPACE_DETAILS_V1, provideBookmarkSurface, type WorkspaceDetailsSnapshot, type WorkspaceDetailsContext } from '@valley/plugin-sdk'
 import { React, currentSession, text, type BaseSession } from './runtime'
 import type { BaseController } from './controller'
+import { useBaseViewActions } from './viewActions'
 
 type EditorView = { path: string; instanceId?: string; source: boolean; setSource(value: boolean): void; controller?: BaseController }
 type SavedView = { v: 1; path: string; viewName: string; search: string; source: boolean }
@@ -61,6 +62,7 @@ export function registerEditorDetails(session: BaseSession): () => void {
 export function useSourceView(path: string, instanceId: string | undefined, embedded: boolean, controller: BaseController): boolean {
   const session = React.useMemo(currentSession, [])
   const [source, setSource] = React.useState(false)
+  useBaseViewActions(controller, { 'view-mode': { effect: 'write', schema: { enum: ['source', 'preview'] }, run: value => setSource(value === 'source') } })
   const view = React.useMemo<EditorView>(() => ({ path, instanceId, source: false, setSource }), [path, instanceId])
   view.controller = controller
   const [revision, refresh] = React.useReducer((value: number) => value + 1, 0)

@@ -1,10 +1,12 @@
 import { React, api, text } from '../runtime'
+import { isMap, parseDocument } from 'yaml'
 import { Icon } from '../icons'
 import { openMenuAt } from '../menuKit'
 import { CellValue, PropertyEditor, type CellActions } from '../cells'
 import { cellText, displayPropertyId, rawCellText } from '../engine/document'
 import type { BaseColumn, BaseEvaluatedView, BaseRow, BaseSummary } from '../engine/types'
 import type { BaseController } from '../controller'
+import { actionValue, stringValue, useBaseViewActions } from '../viewActions'
 import { SUMMARY_NAMES, summaryNamesFor } from '../summaries'
 
 const MIN_WIDTH = 40
@@ -59,9 +61,49 @@ export function TableView({ controller, view, rows, actions }: { controller: Bas
   const custom = (view.options.columnSize && typeof view.options.columnSize === 'object' ? view.options.columnSize : {}) as Record<string, number>
   const [dragWidths, setDragWidths] = React.useState<Record<string, number> | null>(null)
   const [editing, setEditing] = React.useState<{ row: string; column: string } | null>(null)
+  const closeEditor = React.useRef<(() => void) | null>(null)
   const [dragColumn, setDragColumn] = React.useState<string | null>(null)
   const multiplier = HEIGHT_MULTIPLIER[String(view.options.rowHeight ?? '')] ?? 1
   const rowHeight = ROW_HEIGHT * multiplier
+
+  const cellSchema = actionValue({ row: { type: 'string', minLength: 1, maxLength: 32768 }, column: { enum: view.columns.map(column => column.key) } })
+  const cell = (value: { row: string; column: string }) => {
+    const row = rows.find(row => row.id === value.row), column = view.columns.find(column => column.key === value.column)
+    if (!row || !column) throw Object.assign(new Error('The observed Base cell is absent.'), { outcome: 'not-applied' })
+    return { row, column }
+  }
+  const editable = (value: { row: string; column: string }) => {
+    const target = cell(value)
+    if (readonly || target.column.kind !== 'note' || !target.row.hasFrontmatter || ['checkbox', 'unknown'].includes(target.row.widgets[target.column.key] ?? target.column.widget ?? 'text')) throw Object.assign(new Error('This cell has no native inline editor.'), { outcome: 'not-applied' })
+    return target
+  }
+  useBaseViewActions(controller, {
+    'cell-focus': { effect: 'write', schema: actionValue({ ...cellSchema.properties, edit: { type: 'boolean' } }), state: editing, run: value => {
+      const target = value.edit ? editable(value) : cell(value)
+      const rowElement = [...(rootRef.current?.querySelectorAll<HTMLElement>('[data-row-path]') ?? [])].find(item => item.dataset.rowPath === target.row.id)
+      const element = [...(rowElement?.querySelectorAll<HTMLElement>('[data-property]') ?? [])].find(item => item.dataset.property === target.column.key)
+      if (!element) throw Object.assign(new Error('The exact Base cell is not mounted.'), { outcome: 'not-applied' })
+      // Close the open editor through its own finish path: Chromium does not dispatch blur while the window lacks OS focus.
+      if (editing && !(value.edit && editing.row === target.row.id && editing.column === target.column.key)) { closeEditor.current?.(); setEditing(null) }
+      element.focus(); if (value.edit) setEditing({ row: target.row.id, column: target.column.key })
+    } },
+    'cell-inspect': { effect: 'read', schema: cellSchema, fileTargets: value => [{ kind: 'file', path: cell(value).row.id, fileOperation: 'read' }], run: async value => {
+      const target = cell(value), file = await controller.api.vault.readTextDocument(target.row.id)
+      if (!file) throw Object.assign(new Error('The note is absent.'), { outcome: 'not-applied' })
+      const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(file.content)
+      const metadata = parseDocument(match?.[1] ?? '{}')
+      if (metadata.errors.length || !isMap(metadata.contents)) throw Object.assign(new Error('The note properties are invalid.'), { outcome: 'not-applied' })
+      const properties = metadata.toJSON() as Record<string, unknown>
+      const key = Object.keys(properties).find(key => key.toLowerCase() === displayPropertyId(target.column.key).toLowerCase())
+      return { row: target.row.id, column: target.column.key, rawRevision: file.revisionToken, value: target.column.kind === 'note' ? key === undefined ? null : properties[key] : target.row.cells[target.column.key] ?? null }
+    } },
+    'cell-property-save': { effect: 'write', schema: actionValue({ ...cellSchema.properties, expectedRawRevision: { ...stringValue, minLength: 1 }, value: { anyOf: [{ type: ['string', 'number', 'boolean', 'null'] }, { type: 'array', maxItems: 256, items: { type: ['string', 'number', 'boolean', 'null'] } }] } }), fileTargets: value => [{ kind: 'file', path: cell(value).row.id, fileOperation: 'write' }], run: async (value, invocation) => {
+      const { row, column } = cell(value)
+      if (readonly || column.kind !== 'note' || !row.hasFrontmatter || (row.widgets[column.key] ?? column.widget) === 'unknown') throw Object.assign(new Error('This Base property is read-only.'), { outcome: 'not-applied' })
+      await controller.editProperty(row.id, displayPropertyId(column.key), value.value, { expectedRevision: value.expectedRawRevision, beforeEffect: invocation.validateBeforeEffect })
+      return { row: row.id, column: column.key, saved: true }
+    } },
+  })
 
   React.useLayoutEffect(() => {
     const root = rootRef.current
@@ -183,6 +225,7 @@ export function TableView({ controller, view, rows, actions }: { controller: Bas
                 actions={actions}
                 editing={isEditing}
                 onEditingChange={(value) => setEditing(value ? { row: row.id, column: column.key } : null)}
+                closeRef={closeEditor}
                 onSave={(value) => controller.editProperty(row.id, displayPropertyId(column.key), value)}
               />
             ) : null
@@ -246,6 +289,7 @@ export function TableView({ controller, view, rows, actions }: { controller: Bas
     <div
       key={row.id}
       className="base-tr base-row"
+      data-row-path={row.id}
       style={{ gridTemplateColumns: template, minWidth: totalWidth, height: multiplier > 1 ? rowHeight : undefined }}
       onContextMenu={(event) => {
         if ((event.target as HTMLElement).closest('input')) return
@@ -341,4 +385,3 @@ export function TableView({ controller, view, rows, actions }: { controller: Bas
     </div>
   )
 }
-

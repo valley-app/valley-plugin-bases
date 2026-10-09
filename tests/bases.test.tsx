@@ -1,3 +1,4 @@
+import Ajv from 'ajv'
 import * as React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -13,6 +14,25 @@ import { changeBase, createBase, EMPTY_BASE, newNoteDefaults, replaceInlineBase 
 afterEach(() => vi.useRealTimers())
 
 describe('Base documents', () => {
+  it('declares the create result and observes its file and guarded restoration', async () => {
+    const mock = createMockValleyApi({ manifest: { id: 'bases' }, files: { 'Untitled.base': 'keep' } })
+    const registrations = vi.spyOn(mock.api.commands, 'register')
+    const dispose = register(mock.api)
+    try {
+      const command = registrations.mock.calls.map(([value]) => value as typeof value & { outputSchema: Record<string, unknown> }).find(value => value.id === 'create')!
+      const validate = new Ajv({ strict: false, strictSchema: true }).compile(command.outputSchema)
+      const result = await mock.api.commands.execute('bases:create', {})
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error(JSON.stringify(result))
+      expect(validate(result.value), JSON.stringify(validate.errors)).toBe(true)
+      expect(validate({ relPath: 'Untitled.base', unexpected: true })).toBe(false)
+      expect(await mock.api.vault.readFile('Untitled 1.base')).toBe(EMPTY_BASE)
+      await mock.busUndo.at(-1)!.undo()
+      expect(await mock.api.vault.stat('Untitled 1.base')).toBeNull()
+      expect(await mock.api.vault.readFile('Untitled.base')).toBe('keep')
+    } finally { await dispose() }
+  })
+
   it('allows sandbox hydration before a file opens without exposing an incomplete bookmark', async () => {
     const mock = createMockValleyApi({ manifest: { id: 'bases' } })
     const dispose = register(mock.api)

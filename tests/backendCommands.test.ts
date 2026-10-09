@@ -73,4 +73,51 @@ describe('Base backend command writes', () => {
     dispose()
   })
 
+  it('refuses invalid or missing targets before any effect with a definite not-applied outcome', async () => {
+    const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
+    const original = 'views:\n  - type: table\n    name: Table\n'
+    const files = new Map([['Forest.base', { content: original, baseline: { mtimeMs: 1, size: original.length, hash: 'one' } }]])
+    const vault = {
+      read: vi.fn(async (path: string) => files.get(path) ?? { content: '', baseline: null }),
+      write: vi.fn(async () => ({ ok: true, baseline: { mtimeMs: 2, size: 1, hash: 'two' } }))
+    }
+    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
+    const dispose = register(api), context = { id: 'refusals', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
+    const expected = files.get('Forest.base')!.baseline
+    const refused = (method: string, input: unknown, code: string, ctx = context) => expect(operations.get(method)!(input, ctx)).rejects.toMatchObject({ code, outcome: 'not-applied' })
+    await refused('base.read', { path: 'Missing.base' }, 'TARGET_NOT_FOUND')
+    await refused('base.read', { path: '../Forest.base' }, 'INVALID_INPUT')
+    await refused('command.base.patch', { input: { path: 'Missing.base', patch: { name: 'X' }, expected } }, 'TARGET_NOT_FOUND')
+    await refused('command.base.write', { input: { path: 'Missing.base', content: original, expected } }, 'TARGET_NOT_FOUND')
+    await refused('command.base.patch', { input: { path: '/Forest.base', patch: { name: 'X' }, expected } }, 'INVALID_INPUT')
+    await refused('command.base.patch', { input: { path: 'Forest.base', patch: ['name'], expected } }, 'INVALID_INPUT')
+    await refused('command.base.patch', { input: { path: 'Forest.base', view: 4, patch: { name: 'X' }, expected } }, 'TARGET_NOT_FOUND')
+    await refused('command.base.patch', { input: { path: 'Forest.base', patch: { name: 'X' } } }, 'REVISION_REQUIRED')
+    await refused('command.base.write', { input: { path: 'Forest.base', content: 'views: [', expected } }, 'INVALID_INPUT')
+    await refused('command.base.write', { input: { path: 'Forest.base', content: 'x'.repeat(750001), expected } }, 'RESOURCE_LIMIT')
+    await refused('command.base.write', { input: { path: 'Forest.base', content: original } }, 'REVISION_REQUIRED')
+    await refused('base.create', { path: 'New.base', content: '- not a map\n' }, 'INVALID_INPUT')
+    const aborted = new AbortController(); aborted.abort()
+    await refused('command.base.write', { input: { path: 'Forest.base', content: original, expected } }, 'CANCELLED', { ...context, cancellation: aborted.signal })
+    await refused('command.base.undo', { snapshot: { path: 'Forest.base', content: 7 }, execution: { expectedRevision: expected } }, 'INVALID_INPUT')
+    expect(vault.write).not.toHaveBeenCalled()
+    dispose()
+  })
+
+  it('restores the exact original bytes on undo even when they were not valid Base YAML', async () => {
+    const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
+    let content = 'views: [\n\t broken', revision = 1
+    const baseline = () => ({ mtimeMs: revision, size: content.length, hash: String(revision) })
+    const vault = { read: async () => ({ content, baseline: baseline() }), write: vi.fn(async (_path: string, next: string, expected: { hash: string }) => {
+      if (expected?.hash !== baseline().hash) return { ok: false, reason: 'conflict' }
+      content = next; revision++; return { ok: true, baseline: baseline() }
+    }) }
+    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
+    const dispose = register(api), context = { id: 'restore', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
+    const result = await operations.get('command.base.write')!({ input: { path: 'Forest.base', content: 'views: []\n', expected: baseline() } }, context) as { undo: { snapshot: unknown; expectedRevision: unknown } }
+    expect(content).toBe('views: []\n')
+    await operations.get('command.base.undo')!({ snapshot: result.undo.snapshot, execution: { expectedRevision: result.undo.expectedRevision } }, context)
+    expect(content).toBe('views: [\n\t broken')
+    dispose()
+  })
 })

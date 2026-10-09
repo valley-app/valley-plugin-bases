@@ -13,7 +13,7 @@ export function changeBase(content: string, view: number | null, patch: Record<s
     if (value === undefined || value === null) target.delete(key)
     else target.set(key, doc.createNode(value))
   }
-  return doc.toString()
+  return doc.toString({ flowCollectionPadding: false, lineWidth: 0 })
 }
 export async function createBase(api: ValleyPluginApi, folder?: string, session?: BaseSession) {
   session?.assertActive()
