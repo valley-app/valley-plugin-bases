@@ -255,7 +255,6 @@ export function baseStore(path: string, inlineSource?: string, session = current
       if (disposed) throw new BaseDocumentClosedError()
       if (!hydrated || !store.snapshot.file) throw new Error(store.snapshot.error || 'The base file could not be read.')
       if (uncertain) throw new Error(store.snapshot.error || 'The Base save outcome is uncertain.')
-      if (retry && store.snapshot.error) { store.snapshot.error = ''; emit() }
       if (
         store.snapshot.error &&
         !retry &&
@@ -286,6 +285,8 @@ export function baseStore(path: string, inlineSource?: string, session = current
           if (view && (!editor || editors.get(view.mountId) !== editor || !expectedDraftRevision)) throw new Error('The exact Base save owner is unavailable.')
           await beforeSave?.()
           if (store.snapshot.content !== content || store.snapshot.file?.baseline !== expected || view && (editors.get(view.mountId) !== editor || editor?.snapshot().revision !== expectedDraftRevision)) throw Object.assign(new Error('The exact Base draft changed before its save.'), { outcome: 'not-applied' })
+          // A retry clears its error only now: emitting earlier changes the observed state that beforeSave just validated.
+          if (retry) store.snapshot.error = ''
           const result = view ? await api.vault.editors.save(view, output, expected, expectedDraftRevision!) : await api.vault.writeFileGuarded(path, output, expected)
           if (!result.ok)
             throw new Error('The base changed elsewhere or could not be saved. Your draft is preserved.')

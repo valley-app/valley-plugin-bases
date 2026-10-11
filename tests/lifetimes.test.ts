@@ -106,6 +106,31 @@ describe('mounted Base draft admission', () => {
     expect(await providers.get('left')!.getSnapshot()).toMatchObject({ dirty: false })
     offLeft(); offRight(); await store.dispose()
   })
+  it('passes beforeSave on a retry without changing the observed error, then writes the retained draft once', async () => {
+    const mock = fixture()
+    const session = initRuntime(mock.api)
+    const store = baseStore('Test.base', undefined, session)
+    await store.load()
+    const write = vi.mocked(mock.api.vault.writeFileGuarded)
+    write.mockResolvedValueOnce({ ok: false } as Awaited<ReturnType<typeof write>>)
+    store.edit(EMPTY_BASE.replace('Table', 'Retried draft'))
+    await expect(store.flush()).rejects.toThrow('draft is preserved')
+    const failure = store.snapshot.error
+    expect(failure).toContain('draft is preserved')
+    let emits = 0
+    const off = store.subscribe(() => { emits++ })
+    const beforeSave = vi.fn(async () => {
+      expect(emits).toBe(0)
+      expect(store.snapshot.error).toBe(failure)
+    })
+    await store.flush(true, undefined, beforeSave)
+    off()
+    expect(beforeSave).toHaveBeenCalledOnce()
+    expect(write).toHaveBeenCalledTimes(2)
+    expect(await mock.api.vault.readFile('Test.base')).toContain('Retried draft')
+    expect(store.snapshot.error).toBe('')
+    await store.dispose()
+  })
 })
 
 describe('durable Base recovery', () => {
