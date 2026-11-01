@@ -4,7 +4,7 @@ Database views of vault files and their properties, with filters, formulas, tabl
 
 This repository owns the plugin’s interface, behavior, dependencies, schemas, tests, translations, and compiled releases. It uses Valley manifest API 5 and the injected SDK 6.
 
-Valley ships this core plugin as a verified release artifact in its application resources. Core and external installations run with the same sandbox, permissions, and SDK/IPC contract. The core package and its locale files are never installed into `.valley`; ordinary vault documents and saved plugin data retain their existing locations.
+Valley ships this core plugin as a verified release artifact in its application resources and copies that exact package into the vault's `.valley/plugins/packages/core/bases/` when the vault opens, replacing the copy whenever the bundled release differs; never edit that copy by hand. Core and external installations run with the same sandbox, permissions, and SDK/IPC contract. Ordinary vault documents and saved plugin data (`.valley/plugins/data/bases/`) keep their existing locations.
 
 ## Package
 
