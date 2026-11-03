@@ -87,10 +87,10 @@ export function register(api: ValleyPluginApi): () => Promise<void> {
         ),
       {
         examples: [
-          { id: 'table', label: 'Table of vault files', code: EMPTY_BASE },
+          { id: 'table', label: uiText('auto.f7dbc5e55b77'), code: EMPTY_BASE },
           {
             id: 'context',
-            label: 'Files in the embedding note’s folder',
+            label: uiText('auto.7290375ba874'),
             code: 'filters: file.folder == this.file.folder\n' + EMPTY_BASE,
           },
         ],

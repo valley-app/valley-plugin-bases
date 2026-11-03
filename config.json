@@ -120,7 +120,8 @@
                 "baseline"
               ],
               "additionalProperties": false
-            }
+            },
+            "descriptionKey": "auto.fcc570f94cb3"
           }
         }
       },
@@ -200,7 +201,8 @@
                 "baseline"
               ],
               "additionalProperties": false
-            }
+            },
+            "descriptionKey": "auto.7d078e089b8e"
           }
         }
       },
@@ -306,7 +308,8 @@
                 "baseline"
               ],
               "additionalProperties": false
-            }
+            },
+            "descriptionKey": "auto.3ea03e3dabdd"
           }
         }
       },
@@ -419,7 +422,8 @@
                 "baseline"
               ],
               "additionalProperties": false
-            }
+            },
+            "descriptionKey": "auto.2cbba9e4a4a9"
           }
         }
       },
@@ -479,7 +483,8 @@
                     "dataType": "json",
                     "schema": {
                       "type": "object"
-                    }
+                    },
+                    "labelKey": "auto.b568d47f2e24"
                   }
                 ],
                 "outputs": [
@@ -532,7 +537,8 @@
                       ],
                       "additionalProperties": false,
                       "$schema": "http://json-schema.org/draft-07/schema#"
-                    }
+                    },
+                    "labelKey": "auto.5faa59d4bc37"
                   }
                 ],
                 "parameterSchema": {
@@ -606,7 +612,8 @@
                 },
                 "readiness": {
                   "state": "Available"
-                }
+                },
+                "descriptionKey": "auto.c9258ca9343d"
               },
               {
                 "id": "file.create",
@@ -624,7 +631,8 @@
                     "dataType": "json",
                     "schema": {
                       "type": "object"
-                    }
+                    },
+                    "labelKey": "auto.b568d47f2e24"
                   }
                 ],
                 "outputs": [
@@ -673,7 +681,8 @@
                       ],
                       "additionalProperties": false,
                       "$schema": "http://json-schema.org/draft-07/schema#"
-                    }
+                    },
+                    "labelKey": "auto.5faa59d4bc37"
                   }
                 ],
                 "parameterSchema": {
@@ -751,7 +760,8 @@
                 },
                 "readiness": {
                   "state": "Available"
-                }
+                },
+                "descriptionKey": "auto.84211bca884c"
               },
               {
                 "id": "file.write",
@@ -769,7 +779,8 @@
                     "dataType": "json",
                     "schema": {
                       "type": "object"
-                    }
+                    },
+                    "labelKey": "auto.b568d47f2e24"
                   }
                 ],
                 "outputs": [
@@ -818,7 +829,8 @@
                       ],
                       "additionalProperties": false,
                       "$schema": "http://json-schema.org/draft-07/schema#"
-                    }
+                    },
+                    "labelKey": "auto.5faa59d4bc37"
                   }
                 ],
                 "parameterSchema": {
@@ -935,7 +947,8 @@
                 },
                 "readiness": {
                   "state": "Available"
-                }
+                },
+                "descriptionKey": "auto.2356c175c9a3"
               },
               {
                 "id": "file.patch",
@@ -953,7 +966,8 @@
                     "dataType": "json",
                     "schema": {
                       "type": "object"
-                    }
+                    },
+                    "labelKey": "auto.b568d47f2e24"
                   }
                 ],
                 "outputs": [
@@ -1002,7 +1016,8 @@
                       ],
                       "additionalProperties": false,
                       "$schema": "http://json-schema.org/draft-07/schema#"
-                    }
+                    },
+                    "labelKey": "auto.5faa59d4bc37"
                   }
                 ],
                 "parameterSchema": {
@@ -1124,7 +1139,8 @@
                 },
                 "readiness": {
                   "state": "Available"
-                }
+                },
+                "descriptionKey": "auto.936c02aeb0b0"
               }
             ]
           }

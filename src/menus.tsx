@@ -7,6 +7,7 @@ import { cellText, displayPropertyId, normalizePropertyId } from './engine/docum
 import type { BaseColumn } from './engine/types'
 import { useBaseViewActions, useLiveBaseController, noValue, stringValue } from './viewActions'
 import { baseResultTable, controllerActions } from './controllerActions'
+import { uiText } from './localization'
 
 const VIEW_ICONS: Record<string, string> = { table: 'table', cards: 'layout-grid', list: 'list', map: 'map' }
 export const viewIcon = (type: string | undefined): string => VIEW_ICONS[type ?? 'table'] ?? 'file-question'
@@ -159,7 +160,7 @@ function ViewOptions({ controller, index, back, close }: { controller: BaseContr
           <Slider label={text('mapHeight')} min={200} max={800} step={20} disabled={readonly} value={Number(raw.mapHeight) || 400} onChange={(mapHeight) => update({ mapHeight })} />
           <label className="base-option">
             <span className="base-option-label">{text('mapCenter')}</span>
-            <input className="base-option-input" placeholder="[latitude, longitude]" disabled={readonly} defaultValue={typeof raw.center === 'string' ? raw.center : ''} onBlur={(event) => update({ center: event.target.value || undefined })} />
+            <input className="base-option-input" placeholder={uiText('auto.fa7374513f37')} disabled={readonly} defaultValue={typeof raw.center === 'string' ? raw.center : ''} onBlur={(event) => update({ center: event.target.value || undefined })} />
           </label>
           <Slider label={text('mapDefaultZoom')} min={1} max={18} step={1} disabled={readonly} value={Number(raw.defaultZoom) || 4} onChange={(defaultZoom) => update({ defaultZoom })} />
           <Slider label={text('mapMinZoom')} min={0} max={24} step={1} disabled={readonly} value={Number(raw.minZoom) || 0} onChange={(minZoom) => update({ minZoom })} />

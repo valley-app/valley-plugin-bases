@@ -38,6 +38,7 @@ import {
   type Scope,
 } from './values'
 import type { BaseCell, BaseColumn, BaseEvaluatedView, BaseEvaluation, BaseGroup, BaseRow, BaseSortRule, BaseSummary, PropertyKind } from './types'
+import { uiText } from '../localization'
 
 /** Display names of the implicit file properties. */
 export const FILE_LABELS: Record<string, string> = {
@@ -537,7 +538,7 @@ export function evaluateBase(content: string, relPath: string, entries: readonly
       limit: view.limit,
       filters: view.filters,
       order: view.order ?? null,
-      message: known ? undefined : `Base configured with an unknown view type: ${view.type}`,
+      message: known ? undefined : uiText('auto.bcc787f575f5', { p0: view.type }),
       available: [...allProperties].map(columnOf),
     }
   })

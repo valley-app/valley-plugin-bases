@@ -6,6 +6,7 @@ import { evaluateBase, cellText, displayPropertyId } from './engine/document'
 import type { BaseEvaluatedView, BaseRow } from './engine/types'
 import { createPropertyMutations } from './propertyMutations'
 import type { MountedPluginView } from '@valley/plugin-sdk'
+import { uiText } from './localization'
 
 export interface BaseEditorProps {
   relPath: string
@@ -123,7 +124,7 @@ export function useBaseController({ relPath, thisPath, viewName, source, editabl
   const patch = (value: Record<string, unknown>, root = false): void => {
     if (!store || readonly || !session.isActive() || mutations.current?.context !== context) { if (draft.strictAction) throw Object.assign(new Error('The exact Base mutation owner is unavailable.'), { outcome: 'not-applied' }); return }
     if (store.snapshot.revision !== snapshot!.revision) {
-      setError('The base changed elsewhere. Reopen its configuration before editing.')
+      setError(uiText('auto.7a6ec1ff4402'))
       if (draft.strictAction) throw Object.assign(new Error('The observed Base source changed.'), { outcome: 'not-applied' })
       return
     }
@@ -136,7 +137,7 @@ export function useBaseController({ relPath, thisPath, viewName, source, editabl
   const patchAll = (viewValue: Record<string, unknown> | null, rootValue: Record<string, unknown> | null): void => {
     if (!store || readonly || !session.isActive() || mutations.current?.context !== context) { if (draft.strictAction) throw Object.assign(new Error('The exact Base mutation owner is unavailable.'), { outcome: 'not-applied' }); return }
     if (store.snapshot.revision !== snapshot!.revision) {
-      setError('The base changed elsewhere. Reopen its configuration before editing.')
+      setError(uiText('auto.7a6ec1ff4402'))
       if (draft.strictAction) throw Object.assign(new Error('The observed Base source changed.'), { outcome: 'not-applied' })
       return
     }

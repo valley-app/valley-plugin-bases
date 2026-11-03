@@ -1,6 +1,7 @@
 import { isMap, parse, parseDocument, stringify } from 'yaml'
 import type { BaseSession } from './runtime'
 import { newNoteDefaults } from './files'
+import { uiText } from './localization'
 
 export function createPropertyMutations(session: BaseSession, publish: (path: string, frontmatter: Record<string, unknown>) => void) {
   const api = session.api
@@ -76,12 +77,12 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
         if (!result.ok) throw Object.assign(new Error(result.reason === 'error' ? 'The note save has no confirmed acknowledgement.' : 'The note changed. Your edit was not applied.'), { outcome: result.reason === 'error' ? 'unknown' : 'not-applied', retryable: false })
         let expectedRevision = result.revisionToken
         const replay = async (expected: string, content: string) => {
-          if (!session.isActive()) return { ok: false, message: 'The base session has ended.' }
+          if (!session.isActive()) return { ok: false, message: uiText('auto.8e8c74d81737') }
           const current = await api.vault.readTextDocument(path)
-          if (!session.isActive()) return { ok: false, message: 'The base session has ended.' }
-          if (!current || current.content !== expected || !expectedRevision) return { ok: false, message: 'The note changed after this edit.' }
+          if (!session.isActive()) return { ok: false, message: uiText('auto.8e8c74d81737') }
+          if (!current || current.content !== expected || !expectedRevision) return { ok: false, message: uiText('auto.1528b7cbf275') }
           const written = await api.vault.writeTextDocumentGuarded(path, content, expectedRevision)
-          if (!written.ok) return { ok: false, message: 'The note changed or could not be saved.' }
+          if (!written.ok) return { ok: false, message: uiText('auto.3f173a1cfe10') }
           expectedRevision = written.revisionToken
           const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)
           update(path, parse(frontmatter?.[1] ?? '{}'))
@@ -89,8 +90,8 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
         }
         const undo = (expected: string, content: string) => session.isActive()
           ? accept(() => replay(expected, content))
-          : Promise.resolve({ ok: false, message: 'The base session has ended.' })
-        if (session.isActive()) api.undo.push({ label: `Edit ${key}`, undo: () => undo(next, file.content), redo: () => undo(file.content, next) })
+          : Promise.resolve({ ok: false, message: uiText('auto.8e8c74d81737') })
+        if (session.isActive()) api.undo.push({ label: uiText('auto.79b22f126bb7', { p0: key }), undo: () => undo(next, file.content), redo: () => undo(file.content, next) })
         update(path, metadata.toJSON())
       })
     }

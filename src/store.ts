@@ -2,6 +2,7 @@ import type { TextFileWithBaseline } from '@valley/plugin-sdk/types'
 import type { MountedPluginView, PluginEditorSnapshot } from '@valley/plugin-sdk'
 import { baseRecoveryJournal, BaseSessionEndedError, currentSession, type BaseSession } from './runtime'
 import { replaceInlineBase } from './files'
+import { uiText } from './localization'
 export interface BaseStore {
   snapshot: {
     file: TextFileWithBaseline | null
@@ -204,22 +205,22 @@ export function baseStore(path: string, inlineSource?: string, session = current
       if (previous === content) return
       if (recordUndo)
         api.undo.push({
-          label: 'Edit base view',
+          label: uiText('auto.2b06b04104cd'),
           async undo() {
-            if (disposed || !session.isActive()) return { ok: false, message: 'The base document has closed.' }
+            if (disposed || !session.isActive()) return { ok: false, message: uiText('auto.70518eb1ba66') }
             if (store.snapshot.content !== content)
               return {
                 ok: false,
-                message: 'The base changed after this edit.',
+                message: uiText('auto.67214f12ad4b'),
               }
             store.edit(previous, false, view)
             await store.flush(false, view)
             return { ok: true }
           },
           async redo() {
-            if (disposed || !session.isActive()) return { ok: false, message: 'The base document has closed.' }
+            if (disposed || !session.isActive()) return { ok: false, message: uiText('auto.70518eb1ba66') }
             if (store.snapshot.content !== previous)
-              return { ok: false, message: 'The base changed after undo.' }
+              return { ok: false, message: uiText('auto.f056d58f324e') }
             store.edit(content, false, view)
             await store.flush(false, view)
             return { ok: true }
