@@ -12,9 +12,13 @@ import { stores } from './store'
 import css from './styles'
 import { registerEditorDetails } from './editorViews'
 import { registerBaseViewCommands } from './viewActions'
-import { initLocalization } from './localization'
+import { initLocalization, uiText } from './localization'
 
 export function register(api: ValleyPluginApi): () => Promise<void> {
+  const failureMessage = (error: { message: string; localized?: { key: string; values?: Record<string, unknown> } }): string => {
+    const localized = error.localized && api.ui.t(error.localized.key, error.localized.values as Parameters<typeof api.ui.t>[1])
+    return localized && localized !== error.localized?.key ? localized : error.message
+  }
   const session = initRuntime(api)
   const documents = stores(session)
   initLocalization(api)
@@ -65,12 +69,13 @@ export function register(api: ValleyPluginApi): () => Promise<void> {
       directories: true,
       run: async (path) => {
         session.assertActive()
-        const index = session.index
-        await session.run(() => index.ready())
+        // A file row creates beside the file, a folder row inside it; the vault answers at once, while the index can still be starting.
+        const file = await session.run(() => api.vault.fileInfo(path))
         session.assertActive()
-        const entry = index.entries().find((entry) => entry.relPath === path)
-        const folder = entry ? path.slice(0, Math.max(0, path.lastIndexOf('/'))) : path
-        await api.commands.executeOwn('create', { folder })
+        const folder = file ? path.slice(0, Math.max(0, path.lastIndexOf('/'))) : path
+        const result = await api.commands.executeOwn('create', { folder })
+        if (result.ok || !session.isActive() || result.error.kind === 'cancelled') return
+        await api.ui.confirm({ title: uiText('bases.create.failed'), message: failureMessage(result.error), actions: [{ label: uiText('bases.create.close'), value: 'close' }] })
       },
     }),
     api.markdown.registerCodeBlockRenderer(

@@ -1,6 +1,6 @@
 import { createWorkflowAdapter } from './workflow'
 import type { PluginBackendApi, PluginBackendOperationContext } from '@valley/plugin-sdk'
-import { isMap, parseDocument } from 'yaml'
+import { isMap, Lexer, parseDocument } from 'yaml'
 import { changeBase, EMPTY_BASE } from '../files'
 
 /** Hosts the map view may load styles, glyphs, sprites and tiles from. */
@@ -10,19 +10,50 @@ interface MapResource { bodyBase64: string; contentType: string }
 
 const CACHE_BYTES = 48 * 1024 * 1024
 
+/**
+ * Base text a command may write or patch. YAML parsing in the backend guest costs about 14 µs per token plus 1 µs per
+ * character, so these bounds keep each parse (and a patch's parse plus serialization) near half of the 1000 ms guest
+ * CPU turn; the work is spread over separate turns.
+ */
+export const BASE_CONTENT_LIMIT = 131072
+export const BASE_TOKEN_LIMIT = 16000
+
+const nextTurn = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
+const refuse = (code: string, message: string): never => { throw Object.assign(new Error(message), { code, outcome: 'not-applied' }) }
+
+function bounded(input: string): void {
+  if (input.length > BASE_CONTENT_LIMIT) refuse('RESOURCE_LIMIT', 'Base content exceeds its limit')
+  let tokens = 0
+  for (const _token of new Lexer().lex(input)) if (++tokens > BASE_TOKEN_LIMIT) refuse('RESOURCE_LIMIT', 'Base content is too complex for one command')
+}
+
+/** Validated Base text for a create or write; refused before any effect when it is too large to check in the guest. */
+export async function checkedBaseContent(input: unknown): Promise<string> {
+  if (typeof input !== 'string') refuse('INVALID_INPUT', 'Base content must be a string')
+  bounded(input as string)
+  await nextTurn()
+  const parsed = parseDocument(input as string)
+  if (parsed.errors.length || !isMap(parsed.contents)) refuse('INVALID_INPUT', 'Invalid base YAML')
+  try { parsed.toJS({ maxAliasCount: 100 }) } catch (error) { refuse('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid base YAML') }
+  return input as string
+}
+
+/** The current Base with `patch` applied to the file (`view` null) or one view, validated like a write. */
+export async function patchedBaseContent(current: string, view: number | null, patch: Record<string, unknown>): Promise<string> {
+  bounded(current)
+  if (JSON.stringify(patch).length > BASE_CONTENT_LIMIT) refuse('RESOURCE_LIMIT', 'Base patch exceeds its limit')
+  await nextTurn()
+  let changed = ''
+  try { changed = changeBase(current, view, patch) }
+  catch (error) { refuse(error instanceof Error && error.message === 'The view no longer exists' ? 'TARGET_NOT_FOUND' : 'INVALID_INPUT', error instanceof Error ? error.message : 'Base patch could not be applied') }
+  await nextTurn()
+  return checkedBaseContent(changed)
+}
+
 export function register(api: PluginBackendApi): () => void {
   const workflow = createWorkflowAdapter(api)
-  const refuse = (code: string, message: string): never => { throw Object.assign(new Error(message), { code, outcome: 'not-applied' }) }
   const path = (input: unknown): string => {
     if (typeof input !== 'string' || input.length > 4096 || !input.endsWith('.base') || input.startsWith('/') || input.includes('\\') || input.includes('\0') || input.split('/').some(part => !part || part === '.' || part === '..')) refuse('INVALID_INPUT', 'Expected a vault-relative .base file')
-    return input as string
-  }
-  const content = (input: unknown): string => {
-    if (typeof input !== 'string') refuse('INVALID_INPUT', 'Base content must be a string')
-    if ((input as string).length > 750000) refuse('RESOURCE_LIMIT', 'Base content exceeds its limit')
-    const parsed = parseDocument(input as string)
-    if (parsed.errors.length || !isMap(parsed.contents)) refuse('INVALID_INPUT', 'Invalid base YAML')
-    try { parsed.toJS({ maxAliasCount: 100 }) } catch (error) { refuse('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid base YAML') }
     return input as string
   }
   const existing = async (file: string, context: PluginBackendOperationContext) => {
@@ -46,11 +77,8 @@ export function register(api: PluginBackendApi): () => void {
         if (method === 'patch') {
           if (!input.patch || typeof input.patch !== 'object' || Array.isArray(input.patch)) refuse('INVALID_INPUT', 'Base patch must be an object')
           if (input.view !== undefined && input.view !== null && !(Number.isInteger(input.view) && input.view >= 0)) refuse('INVALID_INPUT', 'Base view must be a view index or null')
-          let changed = ''
-          try { changed = changeBase(current!.content, input.view ?? null, input.patch!) }
-          catch (error) { refuse(error instanceof Error && error.message === 'The view no longer exists' ? 'TARGET_NOT_FOUND' : 'INVALID_INPUT', error instanceof Error ? error.message : 'Base patch could not be applied') }
-          next = content(changed)
-        } else next = content(method === 'create' && input.content === undefined ? EMPTY_BASE : input.content)
+          next = await patchedBaseContent(current!.content, input.view ?? null, input.patch!)
+        } else next = await checkedBaseContent(method === 'create' && input.content === undefined ? EMPTY_BASE : input.content)
         if (method !== 'create' && input.expected === undefined) refuse('REVISION_REQUIRED', 'A reviewed file baseline is required')
         beforeEffect(context)
         const result = await context.api.vault.write(file, next, method === 'create' ? null : input.expected!)

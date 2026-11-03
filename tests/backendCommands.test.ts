@@ -1,7 +1,8 @@
 import { assertCommandOutput } from './commandContracts'
 import { describe, expect, it, vi } from 'vitest'
 import type { PluginBackendApi, PluginBackendOperationContext } from '@valley/plugin-sdk'
-import { register } from '../src/backend'
+import { BASE_CONTENT_LIMIT, BASE_TOKEN_LIMIT, register } from '../src/backend'
+import config from '../config.json'
 
 describe('Base backend command writes', () => {
   it('preserves YAML fields and refuses a stale baseline without replacing content', async () => {
@@ -94,7 +95,13 @@ describe('Base backend command writes', () => {
     await refused('command.base.patch', { input: { path: 'Forest.base', view: 4, patch: { name: 'X' }, expected } }, 'TARGET_NOT_FOUND')
     await refused('command.base.patch', { input: { path: 'Forest.base', patch: { name: 'X' } } }, 'REVISION_REQUIRED')
     await refused('command.base.write', { input: { path: 'Forest.base', content: 'views: [', expected } }, 'INVALID_INPUT')
-    await refused('command.base.write', { input: { path: 'Forest.base', content: 'x'.repeat(750001), expected } }, 'RESOURCE_LIMIT')
+    await refused('command.base.write', { input: { path: 'Forest.base', content: 'x'.repeat(BASE_CONTENT_LIMIT + 1), expected } }, 'RESOURCE_LIMIT')
+    const crowded = `views:\n  - type: table\n    name: Dense\n    order: [${Array.from({ length: BASE_TOKEN_LIMIT / 2 }, () => 'a').join(', ')}]\n`
+    expect(crowded.length).toBeLessThan(BASE_CONTENT_LIMIT)
+    await refused('command.base.write', { input: { path: 'Forest.base', content: crowded, expected } }, 'RESOURCE_LIMIT')
+    await refused('command.base.patch', { input: { path: 'Forest.base', patch: { order: Array.from({ length: BASE_CONTENT_LIMIT / 4 }, () => 'file.name') }, expected } }, 'RESOURCE_LIMIT')
+    files.set('Crowded.base', { content: crowded, baseline: { mtimeMs: 1, size: crowded.length, hash: 'crowded' } })
+    await refused('command.base.patch', { input: { path: 'Crowded.base', patch: { name: 'X' }, expected: files.get('Crowded.base')!.baseline } }, 'RESOURCE_LIMIT')
     await refused('command.base.write', { input: { path: 'Forest.base', content: original } }, 'REVISION_REQUIRED')
     await refused('base.create', { path: 'New.base', content: '- not a map\n' }, 'INVALID_INPUT')
     const aborted = new AbortController(); aborted.abort()
@@ -102,6 +109,12 @@ describe('Base backend command writes', () => {
     await refused('command.base.undo', { snapshot: { path: 'Forest.base', content: 7 }, execution: { expectedRevision: expected } }, 'INVALID_INPUT')
     expect(vault.write).not.toHaveBeenCalled()
     dispose()
+  })
+
+  it('declares the command content limit the backend can parse inside one guest turn', () => {
+    const limits = JSON.stringify(config).match(/"maxLength":\s*(131072|750000)\b/g) ?? []
+    expect(limits.length).toBeGreaterThan(0)
+    expect(limits.every(limit => limit.endsWith(String(BASE_CONTENT_LIMIT)))).toBe(true)
   })
 
   it('restores the exact original bytes on undo even when they were not valid Base YAML', async () => {

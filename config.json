@@ -151,7 +151,7 @@
                 },
                 "content": {
                   "type": "string",
-                  "maxLength": 750000
+                  "maxLength": 131072
                 }
               },
               "required": [
@@ -231,7 +231,7 @@
                 },
                 "content": {
                   "type": "string",
-                  "maxLength": 750000
+                  "maxLength": 131072
                 },
                 "expected": {
                   "type": "object",
@@ -691,7 +691,7 @@
                     },
                     "content": {
                       "type": "string",
-                      "maxLength": 750000,
+                      "maxLength": 131072,
                       "title": "content",
                       "ui": {
                         "control": "textarea"
@@ -836,7 +836,7 @@
                     },
                     "content": {
                       "type": "string",
-                      "maxLength": 750000,
+                      "maxLength": 131072,
                       "title": "content",
                       "ui": {
                         "control": "textarea"

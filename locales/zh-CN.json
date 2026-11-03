@@ -22,6 +22,8 @@
   "bases.copyCoordinates": "复制坐标",
   "bases.copyToClipboard": "复制到剪贴板",
   "bases.create": "新基地",
+  "bases.create.failed": "无法创建基地",
+  "bases.create.close": "关闭",
   "bases.createProperty": "添加属性",
   "bases.defaultView": "默认视图",
   "bases.deleteFormula": "删除公式",

@@ -49,23 +49,23 @@ function hold(mock: ReturnType<typeof createMockValleyApi>, offset: number) {
   return { release, captured: () => captured, disposed }
 }
 
-it('keeps queries and file-context creation behind complete scoped pages', async () => {
-  const mock = createMockValleyApi({ manifest: { id: 'bases', indexState: 'scoped' }, indexEntries: Array.from({ length: 129 }, (_, index) => entry(index)) })
+it('keeps queries behind complete scoped pages while file-context creation answers at once', async () => {
+  const mock = createMockValleyApi({ manifest: { id: 'bases', indexState: 'scoped' }, indexEntries: Array.from({ length: 129 }, (_, index) => entry(index)), files: { 'Grove/128.md': 'Body' } })
   const held = hold(mock, 128)
   cleanups.push(register(mock.api))
   const view = renderHook(() => useBaseController({ relPath: 'Query.base', source: EMPTY_BASE }))
   cleanups.push(view.unmount)
   await waitFor(() => expect(held.captured()).toBeDefined())
   const context = mock.api.interop.extensions.providers(FILE_TREE_CONTEXT_ITEM_V1)[0].extension
-  const creating = context.run('Grove/128.md')
+  await act(async () => { await context.run('Grove/128.md') })
   expect(view.result.current.rows).toEqual([])
-  expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
   expect(mock.api.getState().indexEntries).toEqual([])
-  await act(async () => { held.release(); await creating })
-  expect(view.result.current.rows).toHaveLength(129)
   expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledWith('Grove/Untitled.base', expect.any(String), null)
   await context.run('Other')
   expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledWith('Other/Untitled.base', expect.any(String), null)
+  expect(mock.api.ui.confirm).not.toHaveBeenCalled()
+  await act(async () => { held.release() })
+  await waitFor(() => expect(view.result.current.rows).toHaveLength(129))
   const projected = currentSession().index.entries()[0]
   expect(projected).toMatchObject({ size: 0, frontmatter: { price: 0 }, linkPaths: ['Tree.md'], embedPaths: ['Tree.png'], tags: ['trees'], ctimeMs: 100, mtimeMs: 1000 })
   expect(projected.aliases).toEqual(['unused'])
@@ -104,4 +104,13 @@ it('joins observation reads and releases once when its owning session closes', a
   expect(held.disposed).toHaveBeenCalledOnce()
   expect(changed).not.toHaveBeenCalled()
   expect(index.entries()).toEqual([])
+})
+
+it('tells the user when the file-context New base cannot create a base', async () => {
+  const mock = createMockValleyApi({ manifest: { id: 'bases', indexState: 'scoped' }, indexEntries: [entry(0)] })
+  cleanups.push(register(mock.api))
+  vi.mocked(mock.api.vault.writeFileGuarded).mockResolvedValue({ ok: false, reason: 'error' } as never)
+  const context = mock.api.interop.extensions.providers(FILE_TREE_CONTEXT_ITEM_V1)[0].extension
+  await act(async () => { await context.run('Grove') })
+  expect(mock.api.ui.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Could not create the base', actions: [{ label: 'Close', value: 'close' }] }))
 })

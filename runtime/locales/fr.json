@@ -22,6 +22,8 @@
   "bases.copyCoordinates": "Copier les coordonnées",
   "bases.copyToClipboard": "Copier dans le presse-papiers",
   "bases.create": "Nouvelle base",
+  "bases.create.failed": "Impossible de créer la base",
+  "bases.create.close": "Fermer",
   "bases.createProperty": "Ajouter la propriété",
   "bases.defaultView": "Vue par défaut",
   "bases.deleteFormula": "Supprimer la formule",

@@ -22,6 +22,8 @@
   "bases.copyCoordinates": "Copiar coordenadas",
   "bases.copyToClipboard": "Copiar al portapapeles",
   "bases.create": "Nueva base",
+  "bases.create.failed": "No se pudo crear la base",
+  "bases.create.close": "Cerrar",
   "bases.createProperty": "Añadir propiedad",
   "bases.defaultView": "Vista predeterminada",
   "bases.deleteFormula": "Eliminar fórmula",
