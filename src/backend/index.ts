@@ -1,6 +1,7 @@
 import { createWorkflowAdapter } from './workflow'
 import type { PluginBackendApi, PluginBackendOperationContext } from '@valley/plugin-sdk'
 import { isMap, Lexer, parseDocument } from 'yaml'
+import { CONFIG_DIR } from '@valley/plugin-sdk/paths'
 import { changeBase, EMPTY_BASE } from '../files'
 
 /** Hosts the map view may load styles, glyphs, sprites and tiles from. */
@@ -54,6 +55,7 @@ export function register(api: PluginBackendApi): () => void {
   const workflow = createWorkflowAdapter(api)
   const path = (input: unknown): string => {
     if (typeof input !== 'string' || input.length > 4096 || !input.endsWith('.base') || input.startsWith('/') || input.includes('\\') || input.includes('\0') || input.split('/').some(part => !part || part === '.' || part === '..')) refuse('INVALID_INPUT', 'Expected a vault-relative .base file')
+    if ((input as string).split('/')[0].toLowerCase() === CONFIG_DIR) refuse('PATH_REFUSED', 'Bases cannot read or write files in the vault configuration folder')
     return input as string
   }
   const existing = async (file: string, context: PluginBackendOperationContext) => {

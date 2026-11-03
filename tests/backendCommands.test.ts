@@ -111,6 +111,24 @@ describe('Base backend command writes', () => {
     dispose()
   })
 
+  it('refuses a Base in the vault configuration folder before the host write as not applied', async () => {
+    const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
+    const vault = { read: vi.fn(async () => ({ content: '', baseline: null })), write: vi.fn(async () => { throw new Error('Invalid vault content path') }) }
+    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
+    const dispose = register(api), context = { id: 'config-folder', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
+    const expected = { mtimeMs: 1, size: 1, hash: 'one' }
+    for (const [method, input] of [
+      ['base.create', { path: '.valley/plugins/data/todo/Survey.base' }],
+      ['base.create', { path: '.Valley/Survey.base', content: 'views: []\n' }],
+      ['command.base.write', { input: { path: '.valley/Survey.base', content: 'views: []\n', expected } }],
+      ['command.base.patch', { input: { path: '.valley/Survey.base', patch: { name: 'X' }, expected } }],
+      ['base.read', { path: '.valley/Survey.base' }]
+    ] as const) await expect(operations.get(method)!(input, context)).rejects.toMatchObject({ code: 'PATH_REFUSED', outcome: 'not-applied' })
+    expect(vault.read).not.toHaveBeenCalled()
+    expect(vault.write).not.toHaveBeenCalled()
+    dispose()
+  })
+
   it('declares the command content limit the backend can parse inside one guest turn', () => {
     const limits = JSON.stringify(config).match(/"maxLength":\s*(131072|750000)\b/g) ?? []
     expect(limits.length).toBeGreaterThan(0)
