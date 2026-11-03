@@ -182,6 +182,34 @@ describe('durable Base recovery', () => {
     await recovered.dispose()
   })
 
+  it('reports a recovered draft as unsaved and saves it without another edit', async () => {
+    const fileDrafts = new Map<string, PluginFileDraftSnapshot>()
+    const options = { manifest: { id: 'bases' }, files: { 'Test.base': EMPTY_BASE }, fileDrafts }
+    const original = createMockValleyApi(options)
+    initRuntime(original.api)
+    const first = baseStore('Test.base')
+    await first.load()
+    first.edit(EMPTY_BASE.replace('Table', 'Recovered after crash'))
+    await first.dispose()
+    const fresh = createMockValleyApi(options)
+    const session = initRuntime(fresh.api)
+    let provider!: PluginEditorProvider
+    Object.assign(fresh.api.vault, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn(async (_view: MountedPluginView, content: string, expected: unknown) => fresh.api.vault.writeFileGuarded('Test.base', content, expected as never)) } })
+    const recovered = baseStore('Test.base', undefined, session)
+    const mounted: MountedPluginView = { mountId: 'recovered', generation: 1, area: 'main', paneId: 'p', tabId: 't', filePath: 'Test.base', pluginId: 'bases' }
+    const off = recovered.attachEditor(mounted, () => ({ revision: 0, dirty: false, active: true }), () => {})
+    const notified: unknown[] = []
+    recovered.subscribe(() => notified.push(provider.getSnapshot()))
+    await recovered.load()
+    // The host repaints the unsaved marker only from a notification, so one must carry the recovered, ready state.
+    await vi.waitFor(() => expect(notified).toContainEqual(expect.objectContaining({ dirty: true, readiness: 'ready' })))
+    await vi.waitFor(async () => expect(await fresh.api.vault.readFile('Test.base')).toContain('Recovered after crash'))
+    await vi.waitFor(async () => expect(await provider.getSnapshot()).toMatchObject({ dirty: false, readiness: 'ready' }))
+    expect(fileDrafts.size).toBe(0)
+    off()
+    await recovered.dispose()
+  })
+
   it('journals the newest edit through a held write before disposal completes', async () => {
     const mock = fixture()
     initRuntime(mock.api)

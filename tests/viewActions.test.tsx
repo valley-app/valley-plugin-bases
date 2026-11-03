@@ -86,6 +86,12 @@ describe('exact mounted Base actions', () => {
     } finally { Object.assign(globalThis, original) }
     await act(async () => { h.rendered.unmount(); await h.dispose() })
   })
+  it('names the host commands that return the exact mount target when a target is missing or stale', async () => {
+    const h = await fixture()
+    await expect(Promise.resolve().then(() => h.command('view-inspect').run({ target: { mountId: 'base-mount' } }, { caller: 'agent' }))).rejects.toMatchObject({ outcome: 'not-applied', message: expect.stringContaining('tab:snapshot or viewer:inspect') })
+    await expect(Promise.resolve().then(() => h.command('view-inspect').run({ target: { ...target, generation: 9 } }, { caller: 'agent' }))).rejects.toMatchObject({ outcome: 'not-applied', message: expect.stringContaining('Inspect tab:snapshot or viewer:inspect again') })
+    await act(async () => { h.rendered.unmount(); await h.dispose() })
+  })
   it('refuses invalid schemas and final cancellation or revocation without altering the draft', async () => {
     const h = await fixture()
     for (const value of [0, 801, '260']) await expect(h.run('cards-size', value)).rejects.toMatchObject({ outcome: 'not-applied' })

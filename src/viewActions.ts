@@ -25,14 +25,14 @@ const files = (target: MountedPluginView, effect: 'read' | 'write'): CommandFile
 function refresh(owner: Owner): void { const next = JSON.stringify([signature(owner.controller), ...[...owner.actions.values()].map(actions => Object.entries(actions).map(([id, action]) => [id, action.state]))]); if (owner.signature !== next) { owner.signature = next; owner.revision = revision() } }
 function parse(raw: unknown, observed = false) {
   const schema = { type: 'object', additionalProperties: false, required: observed ? ['target', 'expectedRevision', 'action', 'value'] : ['target'], properties: { target: targetSchema, ...(observed ? { expectedRevision: id, action: id, value: {} } : {}) } }
-  if (!matchesSchema(schema, raw)) throw notApplied('Use an exact mounted Base target and strict action arguments.')
+  if (!matchesSchema(schema, raw)) throw notApplied('Use an exact mounted Base target (the mountedView that tab:snapshot or viewer:inspect returns) and strict action arguments.')
   if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 131072) throw notApplied('Base actions are limited to 128 KiB.')
   return raw as { target: MountedPluginView; expectedRevision: string; action: string; value: unknown }
 }
 function find(session: BaseSession, target: MountedPluginView, allowError = false): Owner {
   session.assertActive()
   const owner = state(session).get(target.mountId)
-  if (!owner || targetKey(owner.mounted) !== targetKey(target)) throw notApplied('The exact Base mount was replaced or closed.')
+  if (!owner || targetKey(owner.mounted) !== targetKey(target)) throw notApplied('The exact Base mount was replaced or closed. Inspect tab:snapshot or viewer:inspect again.')
   owner.controller.assertViewCurrent(allowError)
   refresh(owner)
   return owner

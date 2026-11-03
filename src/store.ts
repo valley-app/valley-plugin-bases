@@ -148,7 +148,14 @@ export function baseStore(path: string, inlineSource?: string, session = current
         }
         if (disposed || !session.isActive()) return
         hydrate()
-        if (store.snapshot.file && edited) { emit(); return }
+        if (store.snapshot.file && edited) {
+          // A recovered draft is an edit that never reached its autosave: save it now unless its outcome is uncertain.
+          if (!uncertain && store.snapshot.content !== store.snapshot.file.content) {
+            clearTimeout(timer)
+            timer = setTimeout(() => { void store.flush().catch(() => {}) }, 300)
+          }
+          return
+        }
         while (!disposed) {
           const revision = loadRevision
           const originalFile = store.snapshot.file
@@ -182,7 +189,8 @@ export function baseStore(path: string, inlineSource?: string, session = current
           emit()
           if (revision === loadRevision) return
         }
-      }).finally(() => { if (loading === pending) loading = null })
+      // Mounted editors report 'loading' until this clears, so tell them once it has.
+      }).finally(() => { if (loading === pending) { loading = null; if (editors.size) emit() } })
       loading = pending
       return pending
     },
