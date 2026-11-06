@@ -225,26 +225,47 @@ export function createVault(sources: BaseFileSource[]): BaseVault {
   for (const source of sources) {
     byPath.set(source.path.toLowerCase(), source)
     const name = basename(source.path).toLowerCase()
-    for (const key of new Set([name, name.replace(/\.md$/i, '')])) byName.set(key, [...(byName.get(key) ?? []), source])
+    for (const key of new Set([name, name.replace(/\.md$/i, '')])) {
+      const list = byName.get(key)
+      if (list) list.push(source)
+      else byName.set(key, [source])
+    }
+  }
+  // Shortest path ending in `/<suffix>` or `/<suffix>.md`, for links that name a folder.
+  const bySuffix = new Map<string, BaseFileSource>()
+  for (const source of byPath.values()) {
+    const path = source.path.toLowerCase()
+    const md = path.endsWith('.md')
+    for (let slash = path.indexOf('/'); slash !== -1 && slash < path.lastIndexOf('/'); slash = path.indexOf('/', slash + 1)) {
+      const suffix = path.slice(slash + 1)
+      for (const key of md ? [suffix, suffix.slice(0, -3)] : [suffix]) {
+        const known = bySuffix.get(key)
+        if (!known || source.path.length < known.path.length) bySuffix.set(key, source)
+      }
+    }
+  }
+  const resolved = new Map<string, BaseFileSource | null>()
+  const lookup = (lower: string, folder: string): BaseFileSource | null => {
+    const exact = byPath.get(lower) ?? byPath.get(`${lower}.md`)
+    if (exact) return exact
+    if (lower.includes('/')) {
+      const suffix = bySuffix.get(lower)
+      if (suffix) return suffix
+    }
+    const candidates = byName.get(basename(lower)) ?? []
+    if (!candidates.length) return null
+    return candidates.find((source) => dirname(source.path).toLowerCase() === folder)
+      ?? [...candidates].sort((a, b) => a.path.length - b.path.length || a.path.localeCompare(b.path))[0]
   }
   const resolve = (linktext: string, sourcePath: string): BaseFileSource | null => {
     const text = linktext.trim().replace(/^\.?\//, '')
     if (!text) return null
     const lower = text.toLowerCase()
-    const exact = byPath.get(lower) ?? byPath.get(`${lower}.md`)
-    if (exact) return exact
-    if (lower.includes('/')) {
-      const suffix = [...byPath.values()].filter((source) => {
-        const path = source.path.toLowerCase()
-        return path.endsWith(`/${lower}`) || path.endsWith(`/${lower}.md`)
-      })
-      if (suffix.length) return suffix.sort((a, b) => a.path.length - b.path.length)[0]
-    }
-    const candidates = byName.get(basename(lower)) ?? []
-    if (!candidates.length) return null
     const folder = dirname(sourcePath).toLowerCase()
-    return candidates.find((source) => dirname(source.path).toLowerCase() === folder)
-      ?? [...candidates].sort((a, b) => a.path.length - b.path.length || a.path.localeCompare(b.path))[0]
+    const key = `${folder}\0${lower}`
+    let target = resolved.get(key)
+    if (target === undefined) resolved.set(key, target = lookup(lower, folder))
+    return target
   }
   let backlinks: Map<BaseFileSource, BaseFileSource[]> | null = null
   return {
@@ -256,7 +277,12 @@ export function createVault(sources: BaseFileSource[]): BaseVault {
           const seen = new Set<BaseFileSource>()
           for (const ref of [...source.links, ...source.embeds]) {
             const target = resolve(ref.link.split('#')[0], source.path)
-            if (target && !seen.has(target)) { seen.add(target); backlinks.set(target, [...(backlinks.get(target) ?? []), source]) }
+            if (target && !seen.has(target)) {
+              seen.add(target)
+              const list = backlinks.get(target)
+              if (list) list.push(source)
+              else backlinks.set(target, [source])
+            }
           }
         }
       }

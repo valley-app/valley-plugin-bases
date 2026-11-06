@@ -477,11 +477,11 @@ export class LinkValue extends StringValue {
 const stripSubpath = (link: string): string => (link.includes('#') ? link.slice(0, link.indexOf('#')) : link)
 const isVaultPath = (value: string): boolean => !/^[a-z][a-z0-9+.-]*:/i.test(value)
 const isUrl = (value: string): boolean => {
-  if (!value || value.includes(' ')) return false
+  if (!value || value.includes(' ') || !value.includes(':')) return false
   try { new URL(value); return true } catch { return false }
 }
 const isUrlLike = (value: string): boolean => {
-  if (!value) return false
+  if (!value || !value.includes(':')) return false
   try { new URL(value); return true } catch { return false }
 }
 
@@ -1063,9 +1063,16 @@ function testValue(node: Node, scope: Scope): boolean {
   try { return evalNode(node, scope).isTruthy() } catch { return false }
 }
 
+const parsed = new Map<string, Node | null>()
+
 /** Parse once; a syntax error is reported as `null` so callers can decide how to show it. */
 export function parseExpression(source: string): Node | null {
-  try { return parse(source) } catch { return null }
+  let node = parsed.get(source)
+  if (node !== undefined) return node
+  try { node = parse(source) } catch { node = null }
+  if (parsed.size >= 4096) parsed.clear()
+  parsed.set(source, node)
+  return node
 }
 
 /** Evaluate to a typed value. Runtime failures become an `ErrorValue`;
