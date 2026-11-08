@@ -99,7 +99,7 @@ export function baseStore(path: string, inlineSource?: string, session = current
       }
       const editor = { view, snapshot, active: () => local().active, freeze }
       editors.set(view.mountId, editor)
-      const off = api.vault.editors.register(view, {
+      const off = api.realm.editors.register(view, {
         getSnapshot: snapshot,
         subscribe: store.subscribe,
         prepare(expectedRevision, request) {
@@ -161,7 +161,7 @@ export function baseStore(path: string, inlineSource?: string, session = current
           const revision = loadRevision
           const originalFile = store.snapshot.file
           try {
-            let file = await api.vault.readFileBaseline(path)
+            let file = await api.realm.readFileBaseline(path)
             if (disposed || !session.isActive() || store.isFrozen()) return
             if (revision !== loadRevision) continue
             if (store.snapshot.file !== originalFile) return
@@ -296,7 +296,7 @@ export function baseStore(path: string, inlineSource?: string, session = current
           if (store.snapshot.content !== content || store.snapshot.file?.baseline !== expected || view && (editors.get(view.mountId) !== editor || editor?.snapshot().revision !== expectedDraftRevision)) throw Object.assign(new Error('The exact Base draft changed before its save.'), { outcome: 'not-applied' })
           // A retry clears its error only now: emitting earlier changes the observed state that beforeSave just validated.
           if (retry) store.snapshot.error = ''
-          const result = view ? await api.vault.editors.save(view, output, expected, expectedDraftRevision!) : await api.vault.writeFileGuarded(path, output, expected)
+          const result = view ? await api.realm.editors.save(view, output, expected, expectedDraftRevision!) : await api.realm.writeFileGuarded(path, output, expected)
           if (!result.ok)
             throw new Error('The base changed elsewhere or could not be saved. Your draft is preserved.')
           diskContent = output
@@ -325,7 +325,7 @@ export function baseStore(path: string, inlineSource?: string, session = current
   }
   owned.set(key, store)
   offSession = session.onDispose(() => store.dispose())
-  offFiles = api.vault.onChanged((info) => {
+  offFiles = api.realm.onChanged((info) => {
     if (info.full || info.changes.some((change) => change.relPath === path || path.startsWith(`${change.relPath}/`))) void store.load()
   })
   void store.load().catch(() => {})

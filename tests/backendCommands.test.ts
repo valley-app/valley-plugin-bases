@@ -9,11 +9,11 @@ describe('Base backend command writes', () => {
     const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
     let content = 'description: preserved\nviews:\n  - type: table\n    name: Before\n'
     let baseline = { mtimeMs: 1, size: content.length, hash: 'one' }
-    const vault = { read: vi.fn(async () => ({ content, baseline })), write: vi.fn(async (_path, next, expected) => {
+    const realm = { read: vi.fn(async () => ({ content, baseline })), write: vi.fn(async (_path, next, expected) => {
       if (expected?.hash !== baseline.hash) return { ok: false, reason: 'conflict' }
       content = next; baseline = { mtimeMs: 2, size: content.length, hash: 'two' }; return { ok: true, baseline }
     }) }
-    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (id: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(id, async (input, context) => assertCommandOutput(id, input, await handler(input, context))); return () => operations.delete(id) } } } as unknown as PluginBackendApi
+    const api = { realm, rpc: { handle: () => () => {}, handleOperation: (id: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(id, async (input, context) => assertCommandOutput(id, input, await handler(input, context))); return () => operations.delete(id) } } } as unknown as PluginBackendApi
     const dispose = register(api), context = { id: 'test-operation', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
     const original = { ...baseline }
     expect(await operations.get('base.patch')!({ path: 'Forest.base', view: 0, patch: { name: 'After' }, expected: original }, context)).toMatchObject({ ok: true })
@@ -21,19 +21,19 @@ describe('Base backend command writes', () => {
     expect(content).toContain('name: After')
     expect(await operations.get('base.write')!({ path: 'Forest.base', content: 'views: []\n', expected: original }, context)).toMatchObject({ ok: false, code: 'REVISION_CONFLICT', outcome: 'not-applied' })
     expect(content).toContain('name: After')
-    await expect(operations.get('base.write')!({ path: '../Forest.base', content: 'views: []', expected: baseline }, context)).rejects.toThrow('vault-relative')
-    expect(vault.write).toHaveBeenCalledTimes(2)
+    await expect(operations.get('base.write')!({ path: '../Forest.base', content: 'views: []', expected: baseline }, context)).rejects.toThrow('realm-relative')
+    expect(realm.write).toHaveBeenCalledTimes(2)
     dispose()
   })
   it('returns a serializable receipt and applies its inverse with the committed baseline', async () => {
     const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
     let content = 'views: []\n', revision = 1
     const baseline = () => ({ mtimeMs: revision, size: content.length, hash: String(revision) })
-    const vault = { read: async () => ({ content, baseline: baseline() }), write: vi.fn(async (_path, next, expected) => {
+    const realm = { read: async () => ({ content, baseline: baseline() }), write: vi.fn(async (_path, next, expected) => {
       if (expected?.hash !== baseline().hash) return { ok: false, reason: 'conflict' }
       content = next; revision++; return { ok: true, baseline: baseline() }
     }) }
-    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (id: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(id, async (input, context) => assertCommandOutput(id, input, await handler(input, context))); return () => operations.delete(id) } } } as unknown as PluginBackendApi
+    const api = { realm, rpc: { handle: () => () => {}, handleOperation: (id: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(id, async (input, context) => assertCommandOutput(id, input, await handler(input, context))); return () => operations.delete(id) } } } as unknown as PluginBackendApi
     const dispose = register(api), context = { id: 'admitted', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
     const result = await operations.get('command.base.write')!({ input: { path: 'Forest.base', content: 'description: New\nviews: []\n', expected: baseline() }, execution: { id: 'execution' } }, context) as { value: unknown; undo: { snapshot: unknown; expectedRevision: unknown; affectedEntities: string[] } }
     expect(result.undo).toMatchObject({ snapshot: { path: 'Forest.base', content: 'views: []\n' }, affectedEntities: ['Forest.base'] })
@@ -48,7 +48,7 @@ describe('Base backend command writes', () => {
     const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
     const files = new Map<string, { content: string; baseline: { mtimeMs: number; size: number; hash: string } }>()
     let revision = 0
-    const vault = {
+    const realm = {
       read: async (path: string) => files.get(path) ?? null,
       write: async (path: string, content: string, expected: { hash: string } | null) => {
         const current = files.get(path)
@@ -58,7 +58,7 @@ describe('Base backend command writes', () => {
         return { ok: true, baseline }
       }
     }
-    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => {
+    const api = { realm, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => {
       operations.set(method, async (input, context) => assertCommandOutput(method, input, await handler(input, context)))
       return () => operations.delete(method)
     } } } as unknown as PluginBackendApi
@@ -78,11 +78,11 @@ describe('Base backend command writes', () => {
     const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
     const original = 'views:\n  - type: table\n    name: Table\n'
     const files = new Map([['Forest.base', { content: original, baseline: { mtimeMs: 1, size: original.length, hash: 'one' } }]])
-    const vault = {
+    const realm = {
       read: vi.fn(async (path: string) => files.get(path) ?? { content: '', baseline: null }),
       write: vi.fn(async () => ({ ok: true, baseline: { mtimeMs: 2, size: 1, hash: 'two' } }))
     }
-    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
+    const api = { realm, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
     const dispose = register(api), context = { id: 'refusals', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
     const expected = files.get('Forest.base')!.baseline
     const refused = (method: string, input: unknown, code: string, ctx = context) => expect(operations.get(method)!(input, ctx)).rejects.toMatchObject({ code, outcome: 'not-applied' })
@@ -107,14 +107,14 @@ describe('Base backend command writes', () => {
     const aborted = new AbortController(); aborted.abort()
     await refused('command.base.write', { input: { path: 'Forest.base', content: original, expected } }, 'CANCELLED', { ...context, cancellation: aborted.signal })
     await refused('command.base.undo', { snapshot: { path: 'Forest.base', content: 7 }, execution: { expectedRevision: expected } }, 'INVALID_INPUT')
-    expect(vault.write).not.toHaveBeenCalled()
+    expect(realm.write).not.toHaveBeenCalled()
     dispose()
   })
 
-  it('refuses a Base in the vault configuration folder before the host write as not applied', async () => {
+  it('refuses a Base in the realm configuration folder before the host write as not applied', async () => {
     const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
-    const vault = { read: vi.fn(async () => ({ content: '', baseline: null })), write: vi.fn(async () => { throw new Error('Invalid vault content path') }) }
-    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
+    const realm = { read: vi.fn(async () => ({ content: '', baseline: null })), write: vi.fn(async () => { throw new Error('Invalid realm content path') }) }
+    const api = { realm, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
     const dispose = register(api), context = { id: 'config-folder', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
     const expected = { mtimeMs: 1, size: 1, hash: 'one' }
     for (const [method, input] of [
@@ -124,8 +124,8 @@ describe('Base backend command writes', () => {
       ['command.base.patch', { input: { path: '.valley/Survey.base', patch: { name: 'X' }, expected } }],
       ['base.read', { path: '.valley/Survey.base' }]
     ] as const) await expect(operations.get(method)!(input, context)).rejects.toMatchObject({ code: 'PATH_REFUSED', outcome: 'not-applied' })
-    expect(vault.read).not.toHaveBeenCalled()
-    expect(vault.write).not.toHaveBeenCalled()
+    expect(realm.read).not.toHaveBeenCalled()
+    expect(realm.write).not.toHaveBeenCalled()
     dispose()
   })
 
@@ -139,11 +139,11 @@ describe('Base backend command writes', () => {
     const operations = new Map<string, (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>>()
     let content = 'views: [\n\t broken', revision = 1
     const baseline = () => ({ mtimeMs: revision, size: content.length, hash: String(revision) })
-    const vault = { read: async () => ({ content, baseline: baseline() }), write: vi.fn(async (_path: string, next: string, expected: { hash: string }) => {
+    const realm = { read: async () => ({ content, baseline: baseline() }), write: vi.fn(async (_path: string, next: string, expected: { hash: string }) => {
       if (expected?.hash !== baseline().hash) return { ok: false, reason: 'conflict' }
       content = next; revision++; return { ok: true, baseline: baseline() }
     }) }
-    const api = { vault, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
+    const api = { realm, rpc: { handle: () => () => {}, handleOperation: (method: string, handler: (input: unknown, context: PluginBackendOperationContext) => Promise<unknown>) => { operations.set(method, handler); return () => operations.delete(method) } } } as unknown as PluginBackendApi
     const dispose = register(api), context = { id: 'restore', api, cancellation: new AbortController().signal } as PluginBackendOperationContext
     const result = await operations.get('command.base.write')!({ input: { path: 'Forest.base', content: 'views: []\n', expected: baseline() } }, context) as { undo: { snapshot: unknown; expectedRevision: unknown } }
     expect(content).toBe('views: []\n')

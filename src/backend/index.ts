@@ -54,12 +54,12 @@ export async function patchedBaseContent(current: string, view: number | null, p
 export function register(api: PluginBackendApi): () => void {
   const workflow = createWorkflowAdapter(api)
   const path = (input: unknown): string => {
-    if (typeof input !== 'string' || input.length > 4096 || !input.endsWith('.base') || input.startsWith('/') || input.includes('\\') || input.includes('\0') || input.split('/').some(part => !part || part === '.' || part === '..')) refuse('INVALID_INPUT', 'Expected a vault-relative .base file')
-    if ((input as string).split('/')[0].toLowerCase() === CONFIG_DIR) refuse('PATH_REFUSED', 'Bases cannot read or write files in the vault configuration folder')
+    if (typeof input !== 'string' || input.length > 4096 || !input.endsWith('.base') || input.startsWith('/') || input.includes('\\') || input.includes('\0') || input.split('/').some(part => !part || part === '.' || part === '..')) refuse('INVALID_INPUT', 'Expected a realm-relative .base file')
+    if ((input as string).split('/')[0].toLowerCase() === CONFIG_DIR) refuse('PATH_REFUSED', 'Bases cannot read or write files in the realm configuration folder')
     return input as string
   }
   const existing = async (file: string, context: PluginBackendOperationContext) => {
-    const result = await context.api.vault.read(file)
+    const result = await context.api.realm.read(file)
     if (!result) return refuse('TARGET_UNAVAILABLE', 'Base file is unavailable')
     if (result.baseline === null) return refuse('TARGET_NOT_FOUND', 'Base file does not exist')
     return result
@@ -72,7 +72,7 @@ export function register(api: PluginBackendApi): () => void {
     }),
     ...['create', 'write', 'patch'].flatMap(method => {
       const update = async (raw: unknown, context: PluginBackendOperationContext, receipt: boolean) => {
-        const input = raw as { path: unknown; content?: unknown; view?: number | null; patch?: Record<string, unknown>; expected?: Parameters<PluginBackendApi['vault']['write']>[2] }
+        const input = raw as { path: unknown; content?: unknown; view?: number | null; patch?: Record<string, unknown>; expected?: Parameters<PluginBackendApi['realm']['write']>[2] }
         const file = path(input?.path)
         const current = method === 'create' ? null : await existing(file, context)
         let next: string
@@ -83,7 +83,7 @@ export function register(api: PluginBackendApi): () => void {
         } else next = await checkedBaseContent(method === 'create' && input.content === undefined ? EMPTY_BASE : input.content)
         if (method !== 'create' && input.expected === undefined) refuse('REVISION_REQUIRED', 'A reviewed file baseline is required')
         beforeEffect(context)
-        const result = await context.api.vault.write(file, next, method === 'create' ? null : input.expected!)
+        const result = await context.api.realm.write(file, next, method === 'create' ? null : input.expected!)
         if (!receipt) return result.ok ? { ok: true, data: { path: file, baseline: result.baseline } } : { ok: false, code: 'REVISION_CONFLICT', error: 'Base file changed or could not be saved', outcome: 'not-applied', data: result }
         if (!result.ok) throw Object.assign(new Error('Base file changed or could not be saved'), { code: 'REVISION_CONFLICT', outcome: 'not-applied' })
         return { value: { path: file, baseline: result.baseline }, ...(current ? { undo: { snapshot: { path: file, content: current.content }, expectedRevision: result.baseline, affectedEntities: [file] } } : {}) }
@@ -92,16 +92,16 @@ export function register(api: PluginBackendApi): () => void {
         ...(method === 'create' ? [] : [workflow.operation(`command.base.${method}`, (raw, context) => update((raw as { input: unknown }).input, context, true))])]
     }),
     workflow.operation('command.base.revision', async (raw, context) => {
-      const current = await context.api.vault.read(path((raw as { input: { path: unknown } }).input.path))
+      const current = await context.api.realm.read(path((raw as { input: { path: unknown } }).input.path))
       return current?.baseline ?? null
     }),
     workflow.operation('command.base.undo', async (raw, context) => {
-      const input = raw as { snapshot: { path: unknown; content: unknown }; execution: { expectedRevision: Parameters<PluginBackendApi['vault']['write']>[2] } }
+      const input = raw as { snapshot: { path: unknown; content: unknown }; execution: { expectedRevision: Parameters<PluginBackendApi['realm']['write']>[2] } }
       const file = path(input?.snapshot?.path)
       const snapshot = input.snapshot.content
       if (typeof snapshot !== 'string') refuse('INVALID_INPUT', 'Base undo snapshot must be the original file text')
       beforeEffect(context)
-      const result = await context.api.vault.write(file, snapshot as string, input.execution.expectedRevision)
+      const result = await context.api.realm.write(file, snapshot as string, input.execution.expectedRevision)
       if (!result.ok) throw Object.assign(new Error('Base changed after the original operation'), { code: 'UNDO_CONFLICT_STALE_TARGET', outcome: 'not-applied' })
       return { path: file, baseline: result.baseline }
     })

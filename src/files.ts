@@ -19,21 +19,21 @@ export async function createBase(api: ValleyPluginApi, folder?: string, session?
   session?.assertActive()
   const active = api.getState().activePath ?? ''
   const parent = folder ?? (active.includes('/') ? active.slice(0, active.lastIndexOf('/')) : '')
-  if (parent && normalizeRelPathOpt(parent) !== parent) throw new Error('Expected a vault folder')
+  if (parent && normalizeRelPathOpt(parent) !== parent) throw new Error('Expected a realm folder')
   for (let n = 0; n < 1000; n++) {
     session?.assertActive()
     const relPath = `${parent ? `${parent}/` : ''}Untitled${n ? ` ${n}` : ''}.base`
-    const result = await api.vault.writeFileGuarded(relPath, EMPTY_BASE, null)
+    const result = await api.realm.writeFileGuarded(relPath, EMPTY_BASE, null)
     if (result.ok) {
       if (!session || session.isActive()) await api.workspace.openFile(relPath)
-      const guardedVault = session ? {
-        ...api.vault,
-        readFileBaseline: (...args: Parameters<typeof api.vault.readFileBaseline>) => { session.assertActive(); return api.vault.readFileBaseline(...args) },
-        writeFileGuarded: (...args: Parameters<typeof api.vault.writeFileGuarded>) => { session.assertActive(); return api.vault.writeFileGuarded(...args) },
-        trashFileGuarded: (...args: Parameters<typeof api.vault.trashFileGuarded>) => { session.assertActive(); return api.vault.trashFileGuarded(...args) },
-        restoreTrashed: (...args: Parameters<typeof api.vault.restoreTrashed>) => { session.assertActive(); return api.vault.restoreTrashed(...args) }
-      } : api.vault
-      const revert = guardedCreatedFileRevert(guardedVault, relPath, EMPTY_BASE, result.baseline, 'Create base')
+      const guardedRealm = session ? {
+        ...api.realm,
+        readFileBaseline: (...args: Parameters<typeof api.realm.readFileBaseline>) => { session.assertActive(); return api.realm.readFileBaseline(...args) },
+        writeFileGuarded: (...args: Parameters<typeof api.realm.writeFileGuarded>) => { session.assertActive(); return api.realm.writeFileGuarded(...args) },
+        trashFileGuarded: (...args: Parameters<typeof api.realm.trashFileGuarded>) => { session.assertActive(); return api.realm.trashFileGuarded(...args) },
+        restoreTrashed: (...args: Parameters<typeof api.realm.restoreTrashed>) => { session.assertActive(); return api.realm.restoreTrashed(...args) }
+      } : api.realm
+      const revert = guardedCreatedFileRevert(guardedRealm, relPath, EMPTY_BASE, result.baseline, 'Create base')
       return {
         value: { relPath },
         revert: session ? { ...revert, run: (...args: Parameters<typeof revert.run>) => session.run(() => revert.run(...args)), reapply: (...args: Parameters<NonNullable<typeof revert.reapply>>) => session.run(() => revert.reapply!(...args)) } : revert,

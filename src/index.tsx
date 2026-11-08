@@ -69,8 +69,8 @@ export function register(api: ValleyPluginApi): () => Promise<void> {
       directories: true,
       run: async (path) => {
         session.assertActive()
-        // A file row creates beside the file, a folder row inside it; the vault answers at once, while the index can still be starting.
-        const file = await session.run(() => api.vault.fileInfo(path))
+        // A file row creates beside the file, a folder row inside it; the realm answers at once, while the index can still be starting.
+        const file = await session.run(() => api.realm.fileInfo(path))
         session.assertActive()
         const folder = file ? path.slice(0, Math.max(0, path.lastIndexOf('/'))) : path
         const result = await api.commands.executeOwn('create', { folder })

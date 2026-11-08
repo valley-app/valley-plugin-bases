@@ -213,7 +213,7 @@
   "auto.c9258ca9343d": "Read a Base file and its revision baseline. Uses the owning plugin backend and its existing grants and revision checks.",
   "auto.e49d6a477f17": "Bases: use exact mounted action",
   "auto.f056d58f324e": "The base changed after undo.",
-  "auto.f7dbc5e55b77": "Table of vault files",
+  "auto.f7dbc5e55b77": "Table of realm files",
   "auto.fa7374513f37": "[latitude, longitude]",
   "auto.fcc570f94cb3": "Read a Base file and its revision baseline"
 }

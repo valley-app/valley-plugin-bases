@@ -60,9 +60,9 @@ it('keeps queries behind complete scoped pages while file-context creation answe
   await act(async () => { await context.run('Grove/128.md') })
   expect(view.result.current.rows).toEqual([])
   expect(mock.api.getState().indexEntries).toEqual([])
-  expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledWith('Grove/Untitled.base', expect.any(String), null)
+  expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledWith('Grove/Untitled.base', expect.any(String), null)
   await context.run('Other')
-  expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledWith('Other/Untitled.base', expect.any(String), null)
+  expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledWith('Other/Untitled.base', expect.any(String), null)
   expect(mock.api.ui.confirm).not.toHaveBeenCalled()
   await act(async () => { held.release() })
   await waitFor(() => expect(view.result.current.rows).toHaveLength(129))
@@ -109,7 +109,7 @@ it('joins observation reads and releases once when its owning session closes', a
 it('tells the user when the file-context New base cannot create a base', async () => {
   const mock = createMockValleyApi({ manifest: { id: 'bases', indexState: 'scoped' }, indexEntries: [entry(0)] })
   cleanups.push(register(mock.api))
-  vi.mocked(mock.api.vault.writeFileGuarded).mockResolvedValue({ ok: false, reason: 'error' } as never)
+  vi.mocked(mock.api.realm.writeFileGuarded).mockResolvedValue({ ok: false, reason: 'error' } as never)
   const context = mock.api.interop.extensions.providers(FILE_TREE_CONTEXT_ITEM_V1)[0].extension
   await act(async () => { await context.run('Grove') })
   expect(mock.api.ui.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Could not create the base', actions: [{ label: 'Close', value: 'close' }] }))

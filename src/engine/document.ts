@@ -34,7 +34,7 @@ import {
   UrlValue,
   Value,
   type BaseFileSource,
-  type BaseVault,
+  type BaseRealm,
   type Scope,
 } from './values'
 import type { BaseCell, BaseColumn, BaseEvaluatedView, BaseEvaluation, BaseGroup, BaseRow, BaseSortRule, BaseSummary, PropertyKind } from './types'
@@ -130,7 +130,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 // ---- Serialisation ------------------------------------------------------------
 
-export function serializeValue(value: Value, vault?: BaseVault): BaseCell {
+export function serializeValue(value: Value, realm?: BaseRealm): BaseCell {
   if (value instanceof NullValue) return null
   if (value instanceof ErrorValue) return { __baseValue: 'error', message: value.message }
   if (value instanceof LinkValue) {
@@ -139,8 +139,8 @@ export function serializeValue(value: Value, vault?: BaseVault): BaseCell {
   }
   if (value instanceof UrlValue) return { __baseValue: 'url', value: value.data, display: value.display ? value.display.toString() : undefined }
   if (value instanceof ImageValue) {
-    const vaultPath = !/^[a-z][a-z0-9+.-]*:/i.test(value.data)
-    const target = vaultPath && vault ? vault.resolve(value.data.replace(/^!?\[\[|\]\]$/g, ''), '') : null
+    const realmPath = !/^[a-z][a-z0-9+.-]*:/i.test(value.data)
+    const target = realmPath && realm ? realm.resolve(value.data.replace(/^!?\[\[|\]\]$/g, ''), '') : null
     return { __baseValue: 'image', value: value.data, path: target?.path ?? null }
   }
   if (value instanceof HtmlValue) return { __baseValue: 'html', value: value.data }
@@ -149,8 +149,8 @@ export function serializeValue(value: Value, vault?: BaseVault): BaseCell {
   if (value instanceof StringValue) return value.data
   if (value instanceof NumberValue) return Number.isFinite(value.data) ? value.data : { __baseValue: 'number', value: String(value.data), text: Number.isNaN(value.data) ? 'NaN' : '∞' }
   if (value instanceof BooleanValue) return value.data
-  if (value instanceof TagsValue) return { __baseValue: 'list', kind: 'tags', items: value.values().map((item) => serializeValue(item, vault)) }
-  if (value instanceof ListValue) return { __baseValue: 'list', items: value.values().map((item) => serializeValue(item, vault)) }
+  if (value instanceof TagsValue) return { __baseValue: 'list', kind: 'tags', items: value.values().map((item) => serializeValue(item, realm)) }
+  if (value instanceof ListValue) return { __baseValue: 'list', items: value.values().map((item) => serializeValue(item, realm)) }
   if (value instanceof DateValue) return { __baseValue: 'date', value: value.toString(), time: value.time }
   if (value instanceof DurationValue) return { __baseValue: 'duration', text: value.toString(), ms: value.getMilliseconds() }
   if (value instanceof RelativeDateValue) return { __baseValue: 'relative', text: value.toString() }
@@ -177,7 +177,7 @@ export function cellText(cell: BaseCell | undefined): string {
   return ''
 }
 
-// ---- Vault ---------------------------------------------------------------------
+// ---- Realm ---------------------------------------------------------------------
 
 const basename = (path: string): string => path.slice(path.lastIndexOf('/') + 1)
 const dirname = (path: string): string => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
@@ -219,7 +219,7 @@ export function fileSource(entry: IndexEntry): BaseFileSource {
   }
 }
 
-export function createVault(sources: BaseFileSource[]): BaseVault {
+export function createRealm(sources: BaseFileSource[]): BaseRealm {
   const byPath = new Map<string, BaseFileSource>()
   const byName = new Map<string, BaseFileSource[]>()
   for (const source of sources) {
@@ -389,7 +389,7 @@ export function evaluateBase(content: string, relPath: string, entries: readonly
 
   const today = options.today ?? new Date()
   const sources = entries.filter((entry) => !entry.excluded).map(fileSource).sort((a, b) => a.path.localeCompare(b.path))
-  const vault = createVault(sources)
+  const realm = createRealm(sources)
   const properties = isRecord(config.properties)
     ? Object.fromEntries(Object.entries(config.properties).map(([key, value]) => [normalizePropertyId(key), value]))
     : {}
@@ -415,7 +415,7 @@ export function evaluateBase(content: string, relPath: string, entries: readonly
       cache.set(match, value)
       return value
     }
-    scope = rowScope(source, vault, today, formula, thisScope)
+    scope = rowScope(source, realm, today, formula, thisScope)
     return scope
   }
   const thisScope = makeScope(thisSource, null)
@@ -484,7 +484,7 @@ export function evaluateBase(content: string, relPath: string, entries: readonly
     const sample = values.find((value) => !(value instanceof NullValue))
     const formula = Object.hasOwn(summaryDefs, summaryName) ? summaryDefs[summaryName] : summaryFormulasFor(sample)[summaryName]
     if (!formula) return null
-    return serializeValue(evaluateValue(formula, summaryScope(values, vault, today)), vault)
+    return serializeValue(evaluateValue(formula, summaryScope(values, realm, today)), realm)
   }
   const summariesFor = (list: Row[], view: ParsedView): Record<string, BaseSummary> | undefined =>
     view.summaries ? Object.fromEntries(Object.entries(view.summaries).map(([id, summaryName]) => [id, { name: summaryName, value: summarize(list, id, summaryName) }])) : undefined
@@ -514,7 +514,7 @@ export function evaluateBase(content: string, relPath: string, entries: readonly
       const raw: Record<string, unknown> = {}
       const widgets: Record<string, string> = {}
       for (const key of keys) {
-        cells[key] = serializeValue(valueOf(row, key), vault)
+        cells[key] = serializeValue(valueOf(row, key), realm)
         const { type, name: property } = splitPropertyId(key)
         if (type !== 'note') continue
         const rawKey = Object.keys(row.source.frontmatter).find((candidate) => candidate.toLowerCase() === property.toLowerCase())
@@ -542,7 +542,7 @@ export function evaluateBase(content: string, relPath: string, entries: readonly
       if (empty >= 0 && empty < buckets.length - 1) buckets.push(...buckets.splice(empty, 1))
       ordered = buckets.flatMap((bucket) => bucket.rows)
       groups = buckets.map((bucket) => ({
-        key: serializeValue(bucket.key, vault),
+        key: serializeValue(bucket.key, realm),
         property,
         count: bucket.rows.length,
         rowIds: bucket.rows.map((row) => row.source.path),
@@ -578,8 +578,8 @@ export function summarizeValues(values: unknown[], kind: string, definitions: Re
   const sample = typed.find((value) => !(value instanceof NullValue))
   const formula = Object.hasOwn(definitions, kind) ? definitions[kind] : summaryFormulasFor(sample)[kind]
   if (!formula) return null
-  const vault: BaseVault = { resolve: () => null, backlinks: () => [] }
-  return serializeValue(evaluateValue(formula, summaryScope(typed, vault, new Date())), vault)
+  const realm: BaseRealm = { resolve: () => null, backlinks: () => [] }
+  return serializeValue(evaluateValue(formula, summaryScope(typed, realm, new Date())), realm)
 }
 
 /** Text a note-property cell shows: the raw frontmatter value through its widget. */

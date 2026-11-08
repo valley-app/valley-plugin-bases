@@ -26,10 +26,10 @@ describe('Base documents', () => {
       if (!result.ok) throw new Error(JSON.stringify(result))
       expect(validate(result.value), JSON.stringify(validate.errors)).toBe(true)
       expect(validate({ relPath: 'Untitled.base', unexpected: true })).toBe(false)
-      expect(await mock.api.vault.readFile('Untitled 1.base')).toBe(EMPTY_BASE)
+      expect(await mock.api.realm.readFile('Untitled 1.base')).toBe(EMPTY_BASE)
       await mock.busUndo.at(-1)!.undo()
-      expect(await mock.api.vault.stat('Untitled 1.base')).toBeNull()
-      expect(await mock.api.vault.readFile('Untitled.base')).toBe('keep')
+      expect(await mock.api.realm.stat('Untitled 1.base')).toBeNull()
+      expect(await mock.api.realm.readFile('Untitled.base')).toBe('keep')
     } finally { await dispose() }
   })
 
@@ -49,14 +49,14 @@ describe('Base documents', () => {
     const store = baseStore('Test.base')
     expect(baseStore('Test.base')).toBe(store)
     await waitFor(() => expect(store.snapshot.loaded).toBe(true))
-    const read = vi.spyOn(mock.api.vault, 'readFileBaseline')
-    mock.emitVaultChanged({ changes: [{ relPath: 'Other.md', kind: 'change' }] })
+    const read = vi.spyOn(mock.api.realm, 'readFileBaseline')
+    mock.emitRealmChanged({ changes: [{ relPath: 'Other.md', kind: 'change' }] })
     expect(read).not.toHaveBeenCalled()
-    mock.emitVaultChanged({ changes: [{ relPath: 'Test.base', kind: 'change' }] })
+    mock.emitRealmChanged({ changes: [{ relPath: 'Test.base', kind: 'change' }] })
     await waitFor(() => expect(read).toHaveBeenCalledTimes(1))
     await store.load()
     read.mockClear()
-    mock.emitVaultChanged({ full: true })
+    mock.emitRealmChanged({ full: true })
     await waitFor(() => expect(read).toHaveBeenCalledTimes(1))
     store.dispose()
   })
@@ -68,13 +68,13 @@ describe('Base documents', () => {
     await waitFor(() => expect(store.snapshot.loaded).toBe(true))
     const original = store.snapshot.file!
     let complete!: (file: typeof original) => void
-    const read = vi.spyOn(mock.api.vault, 'readFileBaseline')
+    const read = vi.spyOn(mock.api.realm, 'readFileBaseline')
     read.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve }))
     read.mockResolvedValueOnce({ ...original, content: EMPTY_BASE.replace('Table', 'Newest') })
     const published: string[] = []
     store.subscribe(() => published.push(store.snapshot.content))
     const pending = store.load()
-    for (let index = 0; index < 20; index++) mock.emitVaultChanged({ changes: [{ relPath: 'Test.base', kind: 'change' }] })
+    for (let index = 0; index < 20; index++) mock.emitRealmChanged({ changes: [{ relPath: 'Test.base', kind: 'change' }] })
     expect(read).toHaveBeenCalledTimes(1)
     complete({ ...original, content: EMPTY_BASE.replace('Table', 'Stale') })
     await pending
@@ -90,7 +90,7 @@ describe('Base documents', () => {
     await waitFor(() => expect(store.snapshot.loaded).toBe(true))
     const original = store.snapshot.file!
     let complete!: (file: typeof original) => void
-    const read = vi.spyOn(mock.api.vault, 'readFileBaseline')
+    const read = vi.spyOn(mock.api.realm, 'readFileBaseline')
     read.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve }))
     const pending = store.load()
     store.edit(EMPTY_BASE.replace('Table', 'Draft'))
@@ -99,7 +99,7 @@ describe('Base documents', () => {
     expect(store.snapshot.content).toContain('Draft')
     expect(store.snapshot.file).toEqual(original)
     store.dispose()
-    mock.emitVaultChanged({ full: true })
+    mock.emitRealmChanged({ full: true })
     expect(read).toHaveBeenCalledTimes(1)
   })
 
@@ -110,8 +110,8 @@ describe('Base documents', () => {
     })
     const result = await createBase(mock.api)
     expect(result.value.relPath).toBe('Untitled 1.base')
-    expect(await mock.api.vault.readFile('Untitled.base')).toBe('original')
-    expect(parse(await mock.api.vault.readFile(result.value.relPath))).toMatchObject({
+    expect(await mock.api.realm.readFile('Untitled.base')).toBe('original')
+    expect(parse(await mock.api.realm.readFile(result.value.relPath))).toMatchObject({
       views: [{ type: 'table' }],
     })
     expect(mock.api.workspace.openFile).toHaveBeenCalledWith(result.value.relPath)
@@ -122,8 +122,8 @@ describe('Base documents', () => {
     'rejects invalid creation folder %s',
     async (folder) => {
       const mock = createMockValleyApi({ manifest: { id: 'bases' } })
-      await expect(createBase(mock.api, folder)).rejects.toThrow('vault folder')
-      expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+      await expect(createBase(mock.api, folder)).rejects.toThrow('realm folder')
+      expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
     },
   )
 
@@ -136,9 +136,9 @@ describe('Base documents', () => {
     await waitFor(() => expect(store.snapshot.file).toBeTruthy())
     store.edit(EMPTY_BASE.replace('Table', 'Inline'))
     await store.flush()
-    expect(await mock.api.vault.readFile('Review.md')).toBe(content.replace('Table', 'Inline'))
+    expect(await mock.api.realm.readFile('Review.md')).toBe(content.replace('Table', 'Inline'))
     expect(await mock.undoActions[0].undo()).toMatchObject({ ok: true })
-    expect(await mock.api.vault.readFile('Review.md')).toBe(content)
+    expect(await mock.api.realm.readFile('Review.md')).toBe(content)
     expect(() => replaceInlineBase(content + content, EMPTY_BASE, 'new')).toThrow('uniquely')
     expect(() => replaceInlineBase(content, 'changed elsewhere', 'new')).toThrow('changed')
     store.dispose()
@@ -187,7 +187,7 @@ describe('Base documents', () => {
     const store = baseStore('Test.base')
     await waitFor(() => expect(store.snapshot.loaded).toBe(true))
     store.edit(EMPTY_BASE.replace('Table', 'Draft'))
-    vi.mocked(mock.api.vault.writeFileGuarded).mockResolvedValueOnce({
+    vi.mocked(mock.api.realm.writeFileGuarded).mockResolvedValueOnce({
       ok: false,
       reason: 'conflict',
       current: null,
@@ -195,7 +195,7 @@ describe('Base documents', () => {
     await expect(store.flush()).rejects.toThrow('draft is preserved')
     await store.load()
     expect(store.snapshot.content).toContain('Draft')
-    expect(await mock.api.vault.readFile('Test.base')).toBe(EMPTY_BASE)
+    expect(await mock.api.realm.readFile('Test.base')).toBe(EMPTY_BASE)
   })
 
   it('undoes and redoes view edits and rejects undo after a newer change', async () => {
@@ -210,9 +210,9 @@ describe('Base documents', () => {
     await store.flush()
     expect(mock.undoActions).toHaveLength(1)
     expect(await mock.undoActions[0].undo()).toEqual({ ok: true })
-    expect(await mock.api.vault.readFile('Test.base')).toBe(EMPTY_BASE)
+    expect(await mock.api.realm.readFile('Test.base')).toBe(EMPTY_BASE)
     expect(await mock.undoActions[0].redo!()).toEqual({ ok: true })
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Renamed')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Renamed')
     store.edit(EMPTY_BASE.replace('Table', 'Newer'))
     expect(await mock.undoActions[0].undo()).toMatchObject({ ok: false })
     store.dispose()
@@ -226,23 +226,23 @@ describe('Base documents', () => {
     const dispose = register(mock.api)
     const store = baseStore('Test.base')
     await waitFor(() => expect(store.snapshot.loaded).toBe(true))
-    const write = vi.mocked(mock.api.vault.writeFileGuarded).getMockImplementation()!
+    const write = vi.mocked(mock.api.realm.writeFileGuarded).getMockImplementation()!
     let finish!: () => void
     const blocked = new Promise<void>((resolve) => {
       finish = resolve
     })
-    vi.mocked(mock.api.vault.writeFileGuarded).mockImplementationOnce(async (...args) => {
+    vi.mocked(mock.api.realm.writeFileGuarded).mockImplementationOnce(async (...args) => {
       await blocked
       return write(...args)
     })
     store.edit(EMPTY_BASE.replace('Table', 'First'))
     const unload = mock.runBeforeUnload()
-    await waitFor(() => expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledTimes(1))
     store.edit(EMPTY_BASE.replace('Table', 'Newest'))
     finish()
     await unload
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Newest')
-    expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledTimes(2)
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Newest')
+    expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledTimes(2)
     dispose()
   })
 })
@@ -267,7 +267,7 @@ describe('Base source editor', () => {
     const content = '# Retain this comment\n' + EMPTY_BASE.replace('Table', 'Plants')
     fireEvent.change(editor, { target: { value: content } })
     await act(async () => { await baseStore('Test.base').flush() })
-    expect(await mock.api.vault.readFile('Test.base')).toBe(content)
+    expect(await mock.api.realm.readFile('Test.base')).toBe(content)
     await act(async () => { await provider.invoke!(context, 'view', 'preview') })
     expect(screen.getAllByRole('button', { name: 'Plants' })).toHaveLength(2)
     await act(async () => { await provider.invoke!(context, 'view', 'source') })
@@ -341,7 +341,7 @@ describe('Base editor', () => {
       />,
     )
     expect(await inline.findAllByText(/Review/)).not.toHaveLength(0)
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
 
   it('highlights the displayed view in the view menu', async () => {
@@ -407,10 +407,10 @@ describe('Base editor', () => {
     const input = screen.getByRole('textbox', { name: 'price' })
     fireEvent.change(input, { target: { value: '18.5' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(async () => expect(await mock.api.vault.readFile('Fern.md')).toContain('price: 18.5'))
+    await waitFor(async () => expect(await mock.api.realm.readFile('Fern.md')).toContain('price: 18.5'))
     fireEvent.click(screen.getByRole('checkbox', { name: 'done' }))
-    await waitFor(async () => expect(await mock.api.vault.readFile('Fern.md')).toContain('done: true'))
-    expect(await mock.api.vault.readFile('Fern.md')).toContain('# Fern')
+    await waitFor(async () => expect(await mock.api.realm.readFile('Fern.md')).toContain('done: true'))
+    expect(await mock.api.realm.readFile('Fern.md')).toContain('# Fern')
   })
 
   it('rejects invalid numeric input without corrupting frontmatter', async () => {
@@ -421,8 +421,8 @@ describe('Base editor', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(await screen.findByRole('alert')).toHaveTextContent('valid number')
     fireEvent.blur(input)
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
-    expect(await mock.api.vault.readFile('Fern.md')).toContain('price: 12')
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
+    expect(await mock.api.realm.readFile('Fern.md')).toContain('price: 12')
   })
 
   it('undoes a property edit without overwriting a later note change', async () => {
@@ -435,12 +435,12 @@ describe('Base editor', () => {
     await act(async () => {
       expect(await mock.undoActions[0].undo()).toMatchObject({ ok: true })
     })
-    expect(await mock.api.vault.readFile('Fern.md')).toContain('price: 12')
+    expect(await mock.api.realm.readFile('Fern.md')).toContain('price: 12')
     await act(async () => {
       expect(await mock.undoActions[0].redo!()).toMatchObject({ ok: true })
     })
-    const current = await mock.api.vault.readFileBaseline('Fern.md')
-    await mock.api.vault.writeFileGuarded('Fern.md', current!.content + 'Later change', current!.baseline)
+    const current = await mock.api.realm.readFileBaseline('Fern.md')
+    await mock.api.realm.writeFileGuarded('Fern.md', current!.content + 'Later change', current!.baseline)
     expect(await mock.undoActions[0].undo()).toMatchObject({ ok: false })
   })
 
@@ -464,7 +464,7 @@ describe('Base editor', () => {
     await act(async () => {
       await baseStore('Test.base').flush()
     })
-    expect(parse(await mock.api.vault.readFile('Test.base')).views[0].columnSize['file.name']).toBe(start + 40)
+    expect(parse(await mock.api.realm.readFile('Test.base')).views[0].columnSize['file.name']).toBe(start + 40)
     const saved = await screen.findByRole('separator', { name: 'Resize column name' })
     fireEvent.pointerDown(saved, { button: 0, pointerId: 2, clientX: 100 })
     fireEvent.pointerMove(saved, { pointerId: 2, clientX: 180 })
@@ -481,7 +481,7 @@ describe('Base editor', () => {
     fireEvent.keyDown(input, { key: 'ArrowLeft' })
     expect(document.activeElement).toBe(input)
     fireEvent.keyDown(input, { key: 'Escape' })
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
 
   it('persists keyboard column resizing and survives a remount', async () => {
@@ -492,7 +492,7 @@ describe('Base editor', () => {
     await act(async () => {
       await baseStore('Test.base').flush()
     })
-    expect(parse(await mock.api.vault.readFile('Test.base')).views[0].columnSize['file.name']).toBe(start + 10)
+    expect(parse(await mock.api.realm.readFile('Test.base')).views[0].columnSize['file.name']).toBe(start + 10)
     unmount()
     render(<BaseEditor relPath="Test.base" />)
     expect((await screen.findByRole('separator', { name: 'Resize column name' })).getAttribute('aria-valuenow')).toBe(String(start + 10))

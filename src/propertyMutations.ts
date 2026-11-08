@@ -41,7 +41,7 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
           if (expectedPath !== undefined && path !== expectedPath) continue
           await beforeEffect?.(path)
           assertActive()
-          const created = await api.vault.writeFileGuarded(path, output, null)
+          const created = await api.realm.writeFileGuarded(path, output, null)
           if (created.ok) {
             try {
               assertActive()
@@ -63,7 +63,7 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
       const accepted = structuredClone(value)
       return accept(async () => {
         assertActive()
-        const file = await api.vault.readTextDocument(path)
+        const file = await api.realm.readTextDocument(path)
         assertActive()
         if (!file) throw new Error('The note no longer exists')
         const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(file.content)
@@ -73,15 +73,15 @@ export function createPropertyMutations(session: BaseSession, publish: (path: st
         const next = `---\n${metadata.toString({ flowCollectionPadding: false, lineWidth: 0 })}---\n${file.content.slice(match?.[0].length ?? 0)}`
         await guard?.beforeEffect()
         assertActive()
-        const result = await api.vault.writeTextDocumentGuarded(path, next, guard?.expectedRevision ?? file.revisionToken)
+        const result = await api.realm.writeTextDocumentGuarded(path, next, guard?.expectedRevision ?? file.revisionToken)
         if (!result.ok) throw Object.assign(new Error(result.reason === 'error' ? 'The note save has no confirmed acknowledgement.' : 'The note changed. Your edit was not applied.'), { outcome: result.reason === 'error' ? 'unknown' : 'not-applied', retryable: false })
         let expectedRevision = result.revisionToken
         const replay = async (expected: string, content: string) => {
           if (!session.isActive()) return { ok: false, message: uiText('auto.8e8c74d81737') }
-          const current = await api.vault.readTextDocument(path)
+          const current = await api.realm.readTextDocument(path)
           if (!session.isActive()) return { ok: false, message: uiText('auto.8e8c74d81737') }
           if (!current || current.content !== expected || !expectedRevision) return { ok: false, message: uiText('auto.1528b7cbf275') }
-          const written = await api.vault.writeTextDocumentGuarded(path, content, expectedRevision)
+          const written = await api.realm.writeTextDocumentGuarded(path, content, expectedRevision)
           if (!written.ok) return { ok: false, message: uiText('auto.3f173a1cfe10') }
           expectedRevision = written.revisionToken
           const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)

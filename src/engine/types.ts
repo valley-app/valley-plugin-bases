@@ -28,7 +28,7 @@ export interface BaseColumn {
   kind: PropertyKind
   /** Lucide icon name shown in headers and property pickers. */
   icon: string
-  /** Vault-wide widget of a note property (text, number, checkbox, date, …). */
+  /** Realm-wide widget of a note property (text, number, checkbox, date, …). */
   widget?: string
 }
 

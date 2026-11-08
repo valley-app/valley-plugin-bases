@@ -29,7 +29,7 @@ export function registerEditorDetails(session: BaseSession): () => void {
     async restore(raw) {
       session.assertActive()
       const saved = raw as SavedView
-      if (!(await session.api.vault.fileInfo(saved.path))) throw new Error('Base file is unavailable')
+      if (!(await session.api.realm.fileInfo(saved.path))) throw new Error('Base file is unavailable')
       session.assertActive()
       owned.pending.set(saved.path, saved)
       owned.listeners.forEach(listener => listener())

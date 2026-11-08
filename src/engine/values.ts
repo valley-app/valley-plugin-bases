@@ -354,7 +354,7 @@ export class UrlValue extends StringValue {
 
 export class ImageValue extends StringValue {
   static typeName = 'Image'
-  toString(): string { return isVaultPath(this.data) ? `![[${this.data}]]` : `![](${this.data})` }
+  toString(): string { return isRealmPath(this.data) ? `![[${this.data}]]` : `![](${this.data})` }
 }
 
 export class HtmlValue extends StringValue {
@@ -365,7 +365,7 @@ export class IconValue extends StringValue {}
 
 // ---- Files and links ----------------------------------------------------------
 
-/** A vault file as the evaluator sees it. Built by the Base document from the
+/** A realm file as the evaluator sees it. Built by the Base document from the
  *  link index; `links`/`embeds` hold raw link text in document order. */
 export interface BaseFileSource {
   path: string
@@ -378,7 +378,7 @@ export interface BaseFileSource {
   inlineTags: string[]
 }
 
-export interface BaseVault {
+export interface BaseRealm {
   resolve(linktext: string, sourcePath: string): BaseFileSource | null
   backlinks(file: BaseFileSource): BaseFileSource[]
 }
@@ -398,25 +398,25 @@ const folderOf = (path: string): string => (path.includes('/') ? path.slice(0, p
 export class FileValue extends ObjectLike {
   static typeName = 'File'
   private cache: Record<string, Value> = {}
-  constructor(readonly file: BaseFileSource, readonly vault: BaseVault) { super() }
+  constructor(readonly file: BaseFileSource, readonly realm: BaseRealm) { super() }
   toString(): string { return this.file.path }
   isTruthy(): boolean { return true }
   equals(other: Value): boolean { return other instanceof FileValue && other.file === this.file }
   looseEquals(other: Value): boolean { return other instanceof StringValue && this.file.path === other.data }
   links(): ListValue {
-    return (this.cache.links ??= new ListValue([...this.file.links, ...this.file.embeds].map((ref) => new LinkValue(ref.link, this.file.path, ref.display ? new StringValue(ref.display) : null, this.vault)))) as ListValue
+    return (this.cache.links ??= new ListValue([...this.file.links, ...this.file.embeds].map((ref) => new LinkValue(ref.link, this.file.path, ref.display ? new StringValue(ref.display) : null, this.realm)))) as ListValue
   }
   embeds(): ListValue {
-    return (this.cache.embeds ??= new ListValue(this.file.embeds.map((ref) => new LinkValue(ref.link, this.file.path, ref.display ? new StringValue(ref.display) : null, this.vault)))) as ListValue
+    return (this.cache.embeds ??= new ListValue(this.file.embeds.map((ref) => new LinkValue(ref.link, this.file.path, ref.display ? new StringValue(ref.display) : null, this.realm)))) as ListValue
   }
   backlinks(): ListValue {
-    return (this.cache.backlinks ??= new ListValue(this.vault.backlinks(this.file).map((source) => new LinkValue(source.path, '', new StringValue(shortName(source.path)), this.vault)))) as ListValue
+    return (this.cache.backlinks ??= new ListValue(this.realm.backlinks(this.file).map((source) => new LinkValue(source.path, '', new StringValue(shortName(source.path)), this.realm)))) as ListValue
   }
   tags(): TagsValue {
     return (this.cache.tags ??= new TagsValue([...new Set([...this.file.inlineTags, ...frontmatterTags(this.file.frontmatter)])])) as TagsValue
   }
   properties(): ObjectValue {
-    return (this.cache.properties ??= frontmatterObject(this.file.frontmatter, this.file.path, this.vault)) as ObjectValue
+    return (this.cache.properties ??= frontmatterObject(this.file.frontmatter, this.file.path, this.realm)) as ObjectValue
   }
   access(name: string): Value | null {
     const f = this.file
@@ -447,16 +447,16 @@ export class FileValue extends ObjectLike {
 
 export class LinkValue extends StringValue {
   static typeName = 'Link'
-  constructor(data: string, readonly sourcePath: string, readonly display: Value | null, readonly vault: BaseVault) { super(data) }
-  static parse(text: string, sourcePath: string, vault: BaseVault): LinkValue | null {
+  constructor(data: string, readonly sourcePath: string, readonly display: Value | null, readonly realm: BaseRealm) { super(data) }
+  static parse(text: string, sourcePath: string, realm: BaseRealm): LinkValue | null {
     if (!text.startsWith('[[') || !text.endsWith(']]')) return null
     let inner = text.slice(2, -2)
     let display: Value | null = null
     const pipe = inner.lastIndexOf('|')
     if (pipe !== -1) { display = new StringValue(inner.slice(pipe + 1)); inner = inner.slice(0, pipe) }
-    return new LinkValue(inner, sourcePath, display, vault)
+    return new LinkValue(inner, sourcePath, display, realm)
   }
-  resolve(): BaseFileSource | null { return this.vault.resolve(stripSubpath(this.data), this.sourcePath) }
+  resolve(): BaseFileSource | null { return this.realm.resolve(stripSubpath(this.data), this.sourcePath) }
   toString(): string { return `[[${this.data}${this.display ? `|${this.display.toString()}` : ''}]]` }
   isTruthy(): boolean { return true }
   equals(other: Value): boolean { return other instanceof LinkValue && this.data === other.data && this.sourcePath === other.sourcePath && strictEquals(this.display ?? NULL, other.display ?? NULL) }
@@ -467,7 +467,7 @@ export class LinkValue extends StringValue {
       return a && b ? a === b : this.data === other.data
     }
     if (other instanceof StringValue) {
-      const parsed = LinkValue.parse(other.data, '', this.vault)
+      const parsed = LinkValue.parse(other.data, '', this.realm)
       if (parsed) return this.looseEquals(parsed)
     }
     return other instanceof FileValue && this.resolve() === other.file
@@ -475,7 +475,7 @@ export class LinkValue extends StringValue {
 }
 
 const stripSubpath = (link: string): string => (link.includes('#') ? link.slice(0, link.indexOf('#')) : link)
-const isVaultPath = (value: string): boolean => !/^[a-z][a-z0-9+.-]*:/i.test(value)
+const isRealmPath = (value: string): boolean => !/^[a-z][a-z0-9+.-]*:/i.test(value)
 const isUrl = (value: string): boolean => {
   if (!value || value.includes(' ') || !value.includes(':')) return false
   try { new URL(value); return true } catch { return false }
@@ -496,7 +496,7 @@ export function frontmatterTags(frontmatter: Record<string, unknown>): string[] 
 /** Lazily-typed frontmatter object: `tags` become tags, wikilink
  *  strings become links, URLs become URLs and ISO strings become dates, at any
  *  nesting depth. */
-export function frontmatterObject(frontmatter: Record<string, unknown>, sourcePath: string, vault: BaseVault): ObjectValue {
+export function frontmatterObject(frontmatter: Record<string, unknown>, sourcePath: string, realm: BaseRealm): ObjectValue {
   const object = new ObjectValue({ ...frontmatter })
   const lazy: Lazy = (key, raw) => {
     if (typeof key === 'string' && key.toLowerCase() === 'tags') {
@@ -504,7 +504,7 @@ export function frontmatterObject(frontmatter: Record<string, unknown>, sourcePa
       if (typeof raw === 'string') return new TagsValue([raw])
     }
     if (typeof raw === 'string') {
-      const link = LinkValue.parse(raw, sourcePath, vault)
+      const link = LinkValue.parse(raw, sourcePath, realm)
       if (link) return link
       if (isUrl(raw)) return new UrlValue(raw)
       const date = DateValue.parse(raw)
@@ -733,14 +733,14 @@ define(D, 'time', [p('self', D)], (_c, d) => str(printTime((d as DateValue).date
 define(D, 'relative', [p('self', D)], (_c, d) => new RelativeDateValue((d as DateValue).date, (d as DateValue).time))
 define(D, 'isEmpty', [p('self', D)], () => bool(false))
 
-define(F, 'asLink', [p('self', F), opt('display', Any)], (_c, f, display) => new LinkValue((f as FileValue).file.path, '', display ?? null, (f as FileValue).vault))
+define(F, 'asLink', [p('self', F), opt('display', Any)], (_c, f, display) => new LinkValue((f as FileValue).file.path, '', display ?? null, (f as FileValue).realm))
 define(F, 'hasLink', [p('self', F), p('dest', F, K, S)], (_c, f, dest) => {
   const file = f as FileValue
   let target: BaseFileSource | null
   let path: string
   if (dest instanceof FileValue) { target = dest.file; path = dest.file.path }
   else if (dest instanceof LinkValue) { target = dest.resolve(); path = target ? target.path : dest.data }
-  else { target = file.vault.resolve(stripSubpath((dest as StringValue).data), ''); path = (dest as StringValue).data }
+  else { target = file.realm.resolve(stripSubpath((dest as StringValue).data), ''); path = (dest as StringValue).data }
   return bool(file.links().values().some((link) => link instanceof LinkValue && (target ? link.resolve() === target : link.data === path)))
 })
 define(F, 'inFolder', [p('self', F), p('folder', S)], (_c, f, folder) => {
@@ -755,11 +755,11 @@ define(F, 'hasTag', [p('self', F), many('values', S)], (_c, f, ...values) => {
 })
 define(F, 'hasProperty', [p('self', F), p('property', S)], (_c, f, property) => bool((f as FileValue).properties().keys().includes((property as StringValue).data)))
 
-define(K, 'linksTo', [p('self', K), p('file', F)], (_c, l, f) => bool((l as LinkValue).vault.resolve(stripSubpath((l as LinkValue).data), '') === (f as FileValue).file))
+define(K, 'linksTo', [p('self', K), p('file', F)], (_c, l, f) => bool((l as LinkValue).realm.resolve(stripSubpath((l as LinkValue).data), '') === (f as FileValue).file))
 define(K, 'asFile', [p('self', K)], (_c, l) => {
   const link = l as LinkValue
   const file = link.resolve()
-  return file ? new FileValue(file, link.vault) : NULL
+  return file ? new FileValue(file, link.realm) : NULL
 })
 
 defineGlobal('now', [], () => new DateValue(new Date(), true))
@@ -785,8 +785,8 @@ defineGlobal('max', [many('inputs', N)], (_c, ...inputs) => {
 defineGlobal('list', [p('self', ValueT)], (_c, value) => (value instanceof ListValue ? value : new ListValue([value])))
 defineGlobal('link', [p('self', S, F), opt('display', Any)], (c, value, display) => {
   if (value instanceof UrlValue || (value instanceof StringValue && isUrlLike(value.data))) return new UrlValue((value as StringValue).data, display ?? null)
-  if (value instanceof FileValue) return new LinkValue(value.file.path, '', display ?? null, c.vault)
-  return LinkValue.parse((value as StringValue).data, '', c.vault) ?? new LinkValue((value as StringValue).data, '', display ?? null, c.vault)
+  if (value instanceof FileValue) return new LinkValue(value.file.path, '', display ?? null, c.realm)
+  return LinkValue.parse((value as StringValue).data, '', c.realm) ?? new LinkValue((value as StringValue).data, '', display ?? null, c.realm)
 })
 defineGlobal('number', [p('input', ValueT)], (_c, input) => {
   if (input instanceof NumberValue) return input
@@ -809,8 +809,8 @@ defineGlobal('image', [p('input', S, F, K, U)], (_c, input) => {
 defineGlobal('icon', [p('input', S)], (_c, input) => new IconValue((input as StringValue).data))
 defineGlobal('file', [p('input', S, K, F)], (c, input) => {
   if (input instanceof FileValue) return input
-  const file = input instanceof LinkValue ? input.resolve() : c.vault.resolve(stripSubpath((input as StringValue).data), '')
-  return file ? new FileValue(file, c.vault) : NULL
+  const file = input instanceof LinkValue ? input.resolve() : c.realm.resolve(stripSubpath((input as StringValue).data), '')
+  return file ? new FileValue(file, c.realm) : NULL
 })
 defineGlobal('html', [p('input', S)], (_c, input) => new HtmlValue((input as StringValue).data))
 defineGlobal('escapeHTML', [p('input', S)], (_c, input) => {
@@ -832,25 +832,25 @@ function findMethod(value: Value, name: string): Fn | null {
 
 /** Identifier scope: a row, `this`, the summary `values`, or a map/filter item. */
 export interface Scope {
-  vault: BaseVault
+  realm: BaseRealm
   today: Date
   identifier(name: string): Value
 }
 
-export function rowScope(file: BaseFileSource, vault: BaseVault, today: Date, formulas: (name: string) => Value, thisScope: Scope | null): Scope {
+export function rowScope(file: BaseFileSource, realm: BaseRealm, today: Date, formulas: (name: string) => Value, thisScope: Scope | null): Scope {
   let fileValue: FileValue | null = null
   let note: ObjectValue | null = null
   const scope: Scope = {
-    vault,
+    realm,
     today,
     identifier(name) {
       switch (name.toLowerCase()) {
         case 'this': return thisScope ? new ThisValue(thisScope) : NULL
-        case 'note': return (note ??= frontmatterObject(file.frontmatter, file.path, vault))
-        case 'file': return (fileValue ??= new FileValue(file, vault))
+        case 'note': return (note ??= frontmatterObject(file.frontmatter, file.path, realm))
+        case 'file': return (fileValue ??= new FileValue(file, realm))
         case 'formula': return new FormulaValue(formulas)
       }
-      return (note ??= frontmatterObject(file.frontmatter, file.path, vault)).getInsensitive(name)
+      return (note ??= frontmatterObject(file.frontmatter, file.path, realm)).getInsensitive(name)
     },
   }
   return scope
@@ -872,7 +872,7 @@ class FormulaValue extends ObjectLike {
 }
 
 const childScope = (parent: Scope, bindings: Record<string, Value>): Scope => ({
-  vault: parent.vault,
+  realm: parent.realm,
   today: parent.today,
   identifier: (name) => (Object.hasOwn(bindings, name) ? bindings[name] : parent.identifier(name)),
 })
@@ -1092,8 +1092,8 @@ export function testExpression(source: string, scope: Scope): boolean {
   return testValue(node, scope)
 }
 
-export function summaryScope(values: Value[], vault: BaseVault, today: Date): Scope {
-  return { vault, today, identifier: (name) => (name.toLowerCase() === 'values' ? new ListValue(values.slice()) : NULL) }
+export function summaryScope(values: Value[], realm: BaseRealm, today: Date): Scope {
+  return { realm, today, identifier: (name) => (name.toLowerCase() === 'values' ? new ListValue(values.slice()) : NULL) }
 }
 
 /** Built-in summaries, keyed by the first non-null value's type. */

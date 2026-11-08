@@ -88,7 +88,7 @@ export function TableView({ controller, view, rows, actions }: { controller: Bas
       element.focus(); if (value.edit) setEditing({ row: target.row.id, column: target.column.key })
     } },
     'cell-inspect': { effect: 'read', schema: cellSchema, fileTargets: value => [{ kind: 'file', path: cell(value).row.id, fileOperation: 'read' }], run: async value => {
-      const target = cell(value), file = await controller.api.vault.readTextDocument(target.row.id)
+      const target = cell(value), file = await controller.api.realm.readTextDocument(target.row.id)
       if (!file) throw Object.assign(new Error('The note is absent.'), { outcome: 'not-applied' })
       const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(file.content)
       const metadata = parseDocument(match?.[1] ?? '{}')

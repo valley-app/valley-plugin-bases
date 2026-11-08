@@ -41,28 +41,28 @@ export function initRuntime(value: ValleyPluginApi): BaseSession {
   void previous?.dispose().catch(() => {})
   api = value
   React = value.React
-  const vault = value.getState().vault?.path
+  const realm = value.getState().realm?.path
   const retained = value.runtime.getOrCreate('bases.recovery', () => new Map<string | undefined, Map<string, BaseDraft>>())
-  let recovery = retained.get(vault)
-  if (!recovery) { recovery = new Map(); retained.set(vault, recovery) }
+  let recovery = retained.get(realm)
+  if (!recovery) { recovery = new Map(); retained.set(realm, recovery) }
   const pendingDocuments = value.runtime.getOrCreate('bases.document-drains', () => new Map<string | undefined, Map<string, Promise<void>>>())
-  let documentDrains = pendingDocuments.get(vault)
-  if (!documentDrains) { documentDrains = new Map(); pendingDocuments.set(vault, documentDrains) }
-  const predecessor = (previous?.root === vault ? previous : sessions.get(value))?.dispose()
+  let documentDrains = pendingDocuments.get(realm)
+  if (!documentDrains) { documentDrains = new Map(); pendingDocuments.set(realm, documentDrains) }
+  const predecessor = (previous?.root === realm ? previous : sessions.get(value))?.dispose()
   let waiting = Boolean(predecessor)
   void predecessor?.then(() => { waiting = false }).catch(() => {})
   let active = true
   let draining: Promise<void> | undefined
   const disposers = new Set<() => void | Promise<void>>()
   const operations = new Set<Promise<unknown>>()
-  let offVault = (): void => {}
+  let offRealm = (): void => {}
   let index: BaseIndex | undefined
   const captured: BaseSession = {
-    api: value, root: vault, recovery, documentDrains,
+    api: value, root: realm, recovery, documentDrains,
     get index() { captured.assertActive(); return index ??= createBaseIndex(captured) },
     isActive: () => {
       if (active) {
-        try { if (value.getState().vault?.path !== vault) void captured.dispose() }
+        try { if (value.getState().realm?.path !== realm) void captured.dispose() }
         catch { void captured.dispose() }
       }
       return active
@@ -94,7 +94,7 @@ export function initRuntime(value: ValleyPluginApi): BaseSession {
     dispose: () => {
       if (draining) return draining
       active = false
-      offVault()
+      offRealm()
       const pending = [...disposers].map((dispose) => { try { return Promise.resolve(dispose()) } catch { return Promise.resolve() } })
       disposers.clear()
       draining = Promise.allSettled([predecessor, ...pending, ...operations]).then(async () => { await index?.dispose() })
@@ -102,7 +102,7 @@ export function initRuntime(value: ValleyPluginApi): BaseSession {
       return draining
     }
   }
-  offVault = value.subscribeState(['vault'], () => { captured.isActive() })
+  offRealm = value.subscribeState(['realm'], () => { captured.isActive() })
   sessions.set(value, captured)
   session = captured
   return captured
@@ -123,7 +123,7 @@ export function baseRecoveryJournal(path: string, inline: boolean, owner: BaseSe
   const existing = owned.get(identity)
   if (existing) return existing
   const roots = owner.api.runtime.getOrCreate('bases.journal-revisions', () => new Map<string | undefined, Map<string, string | null>>())
-  const root = owner.api.getState().vault?.path
+  const root = owner.api.getState().realm?.path
   let observed = roots.get(root)
   if (!observed) { observed = new Map(); roots.set(root, observed) }
   const revisions = observed
@@ -139,7 +139,7 @@ export function baseRecoveryJournal(path: string, inline: boolean, owner: BaseSe
     load: () => {
       if (loading) return loading
       return loading = owner.run(async () => {
-        const saved = await owner.api.vault.drafts.read(path, key)
+        const saved = await owner.api.realm.drafts.read(path, key)
         owner.assertActive()
         receipt = saved?.revisionToken ?? null
         if (revisions.has(identity) && revisions.get(identity) !== receipt) throw new Error('The base recovery journal changed elsewhere. Your local draft is preserved.')
@@ -173,13 +173,13 @@ export function baseRecoveryJournal(path: string, inline: boolean, owner: BaseSe
           while (completed !== requested) {
             const version = requested
             const records = entries()
-            if (owner.api.getState().vault?.path !== root) throw new BaseSessionEndedError()
+            if (owner.api.getState().realm?.path !== root) throw new BaseSessionEndedError()
             if (!records.length) {
-              if (receipt) await owner.api.vault.drafts.clear(path, key, receipt)
+              if (receipt) await owner.api.realm.drafts.clear(path, key, receipt)
               receipt = null
             } else {
               const draft: PluginFileDraft = { content: JSON.stringify(records), baseline: records[0][1].file?.baseline ?? null, state: 'bases.recovery.v1' }
-              const saved = await owner.api.vault.drafts.write(path, key, draft, receipt)
+              const saved = await owner.api.realm.drafts.write(path, key, draft, receipt)
               receipt = saved.revisionToken
             }
             revisions.set(identity, receipt)

@@ -29,7 +29,7 @@ describe('mounted Base draft admission', () => {
     expect(() => previous.editSource(EMPTY_BASE.replace('Table', 'Late'))).toThrow('closed')
     await expect(previous.flushSource()).rejects.toThrow('closed')
     expect(previous.store!.snapshot.content).toBe(final)
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
     await previous.store!.dispose()
   })
   it.each([false, true])('reports its actual terminal draft after unregister with final dirty=%s and rejects late setters', async dirty => {
@@ -38,7 +38,7 @@ describe('mounted Base draft admission', () => {
     const store = baseStore('Test.base', undefined, session)
     await store.load()
     let provider!: PluginEditorProvider
-    Object.assign(mock.api.vault, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn() } })
+    Object.assign(mock.api.realm, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn() } })
     const mounted = view('terminal'), raw = { revision: 0, dirty: false, active: true }
     const off = store.attachEditor(mounted, () => raw, () => {})
     expect(await provider.getSnapshot()).toMatchObject({ dirty: false, readiness: 'ready' })
@@ -53,7 +53,7 @@ describe('mounted Base draft admission', () => {
     await store.dispose()
     expect(await provider.getSnapshot()).toEqual(terminal)
     expect(() => provider.prepare(terminal.revision, { operationId: 'late', fenceId: 'late', deadline: Date.now() + 5000, ownSave: false })).toThrow('changed or is unavailable')
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
   it('refuses raw configuration drafts and holds programmatic edits until Main releases the lease', async () => {
     const mock = fixture()
@@ -61,7 +61,7 @@ describe('mounted Base draft admission', () => {
     const store = baseStore('Test.base', undefined, session)
     await store.load()
     let provider!: PluginEditorProvider
-    Object.assign(mock.api.vault, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn() } })
+    Object.assign(mock.api.realm, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn() } })
     const raw = { revision: 0, dirty: true, active: true }
     const freeze = vi.fn()
     const off = store.attachEditor(view('left'), () => raw, freeze)
@@ -76,7 +76,7 @@ describe('mounted Base draft admission', () => {
     await lease.release()
     expect(freeze).toHaveBeenLastCalledWith(false)
     off(); await store.dispose()
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
   it('saves one original pending payload and retains independent alias refusal in the opposite copy', async () => {
     const mock = fixture()
@@ -84,7 +84,7 @@ describe('mounted Base draft admission', () => {
     const store = baseStore('Test.base', undefined, session)
     await store.load()
     const providers = new Map<string, PluginEditorProvider>()
-    const write = mock.api.vault.writeFileGuarded
+    const write = mock.api.realm.writeFileGuarded
     const save = vi.fn(async (target: MountedPluginView, content: string, expected: Parameters<typeof write>[2], revision: string) => {
       const source = providers.get(target.mountId)!
       const own = await source.prepare(revision, { operationId: 'save', fenceId: 'own', deadline: Date.now() + 5000, ownSave: true })
@@ -95,14 +95,14 @@ describe('mounted Base draft admission', () => {
       try { await own.validate(); await opposite.validate(); return await write(target.filePath, content, expected) }
       finally { await opposite.release(); await own.release() }
     })
-    Object.assign(mock.api.vault, { editors: { register: (target: MountedPluginView, value: PluginEditorProvider) => { providers.set(target.mountId, value); return () => { providers.delete(target.mountId) } }, save } })
+    Object.assign(mock.api.realm, { editors: { register: (target: MountedPluginView, value: PluginEditorProvider) => { providers.set(target.mountId, value); return () => { providers.delete(target.mountId) } }, save } })
     const left = view('left'), right = view('right')
     const offLeft = store.attachEditor(left, () => ({ revision: 0, dirty: false, active: true }), () => {})
     const offRight = store.attachEditor(right, () => ({ revision: 0, dirty: false, active: true }), () => {})
     store.edit(EMPTY_BASE.replace('Table', 'Exact pending'), true, left)
     await store.flush()
     expect(save).toHaveBeenCalledOnce()
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Exact pending')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Exact pending')
     expect(await providers.get('left')!.getSnapshot()).toMatchObject({ dirty: false })
     offLeft(); offRight(); await store.dispose()
   })
@@ -111,7 +111,7 @@ describe('mounted Base draft admission', () => {
     const session = initRuntime(mock.api)
     const store = baseStore('Test.base', undefined, session)
     await store.load()
-    const write = vi.mocked(mock.api.vault.writeFileGuarded)
+    const write = vi.mocked(mock.api.realm.writeFileGuarded)
     write.mockResolvedValueOnce({ ok: false } as Awaited<ReturnType<typeof write>>)
     store.edit(EMPTY_BASE.replace('Table', 'Retried draft'))
     await expect(store.flush()).rejects.toThrow('draft is preserved')
@@ -127,7 +127,7 @@ describe('mounted Base draft admission', () => {
     off()
     expect(beforeSave).toHaveBeenCalledOnce()
     expect(write).toHaveBeenCalledTimes(2)
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Retried draft')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Retried draft')
     expect(store.snapshot.error).toBe('')
     await store.dispose()
   })
@@ -142,12 +142,12 @@ describe('durable Base recovery', () => {
     const original = baseStore('Test.base')
     await original.load()
     const held = deferred()
-    const write = first.api.vault.drafts.write
-    const journal = vi.spyOn(first.api.vault.drafts, 'write').mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = first.api.realm.drafts.write
+    const journal = vi.spyOn(first.api.realm.drafts, 'write').mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     original.edit(EMPTY_BASE.replace('Table', 'Held recovery'))
     await vi.waitFor(() => expect(journal).toHaveBeenCalledOnce())
     const fresh = createMockValleyApi(options)
-    const read = vi.spyOn(fresh.api.vault.drafts, 'read')
+    const read = vi.spyOn(fresh.api.realm.drafts, 'read')
     initRuntime(fresh.api)
     const recovered = baseStore('Test.base')
     await Promise.resolve()
@@ -169,7 +169,7 @@ describe('durable Base recovery', () => {
     first.edit(EMPTY_BASE.replace('Table', 'Recovered ä ö ü'))
     await first.dispose()
     expect(fileDrafts.size).toBe(1)
-    expect(original.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(original.api.realm.writeFileGuarded).not.toHaveBeenCalled()
     const fresh = createMockValleyApi(options)
     initRuntime(fresh.api)
     const recovered = baseStore('Test.base')
@@ -177,7 +177,7 @@ describe('durable Base recovery', () => {
     expect(recovered.snapshot.content).toContain('Recovered ä ö ü')
     expect(recovered.snapshot.file?.baseline).toEqual(first.snapshot.file?.baseline)
     await recovered.flush()
-    expect(await fresh.api.vault.readFile('Test.base')).toContain('Recovered ä ö ü')
+    expect(await fresh.api.realm.readFile('Test.base')).toContain('Recovered ä ö ü')
     expect(fileDrafts.size).toBe(0)
     await recovered.dispose()
   })
@@ -194,7 +194,7 @@ describe('durable Base recovery', () => {
     const fresh = createMockValleyApi(options)
     const session = initRuntime(fresh.api)
     let provider!: PluginEditorProvider
-    Object.assign(fresh.api.vault, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn(async (_view: MountedPluginView, content: string, expected: unknown) => fresh.api.vault.writeFileGuarded('Test.base', content, expected as never)) } })
+    Object.assign(fresh.api.realm, { editors: { register: (_view: MountedPluginView, value: PluginEditorProvider) => { provider = value; return () => {} }, save: vi.fn(async (_view: MountedPluginView, content: string, expected: unknown) => fresh.api.realm.writeFileGuarded('Test.base', content, expected as never)) } })
     const recovered = baseStore('Test.base', undefined, session)
     const mounted: MountedPluginView = { mountId: 'recovered', generation: 1, area: 'main', paneId: 'p', tabId: 't', filePath: 'Test.base', pluginId: 'bases' }
     const off = recovered.attachEditor(mounted, () => ({ revision: 0, dirty: false, active: true }), () => {})
@@ -203,7 +203,7 @@ describe('durable Base recovery', () => {
     await recovered.load()
     // The host repaints the unsaved marker only from a notification, so one must carry the recovered, ready state.
     await vi.waitFor(() => expect(notified).toContainEqual(expect.objectContaining({ dirty: true, readiness: 'ready' })))
-    await vi.waitFor(async () => expect(await fresh.api.vault.readFile('Test.base')).toContain('Recovered after crash'))
+    await vi.waitFor(async () => expect(await fresh.api.realm.readFile('Test.base')).toContain('Recovered after crash'))
     await vi.waitFor(async () => expect(await provider.getSnapshot()).toMatchObject({ dirty: false, readiness: 'ready' }))
     expect(fileDrafts.size).toBe(0)
     off()
@@ -216,8 +216,8 @@ describe('durable Base recovery', () => {
     const store = baseStore('Test.base')
     await store.load()
     const held = deferred()
-    const write = mock.api.vault.drafts.write
-    const journal = vi.spyOn(mock.api.vault.drafts, 'write').mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = mock.api.realm.drafts.write
+    const journal = vi.spyOn(mock.api.realm.drafts, 'write').mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     store.edit(EMPTY_BASE.replace('Table', 'First'))
     await vi.waitFor(() => expect(journal).toHaveBeenCalledOnce())
     for (let index = 0; index < 20; index++) store.edit(EMPTY_BASE.replace('Table', `Latest ${index}`))
@@ -228,14 +228,14 @@ describe('durable Base recovery', () => {
     held.resolve()
     await closing
     expect(journal).toHaveBeenCalledTimes(2)
-    expect((await mock.api.vault.drafts.read('Test.base', 'editor'))?.draft.content).toContain('Latest 19')
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect((await mock.api.realm.drafts.read('Test.base', 'editor'))?.draft.content).toContain('Latest 19')
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
 
   it('blocks editing until recovery reads finish and fails closed on a journal read error', async () => {
     const mock = fixture()
     const held = deferred()
-    vi.spyOn(mock.api.vault.drafts, 'read').mockImplementationOnce(async () => { await held.promise; throw new Error('Journal unavailable') })
+    vi.spyOn(mock.api.realm.drafts, 'read').mockImplementationOnce(async () => { await held.promise; throw new Error('Journal unavailable') })
     initRuntime(mock.api)
     const store = baseStore('Test.base')
     expect(() => store.edit(EMPTY_BASE.replace('Table', 'Unsafe'))).toThrow('still loading')
@@ -243,7 +243,7 @@ describe('durable Base recovery', () => {
     await store.load()
     expect(store.snapshot.error).toContain('Journal unavailable')
     expect(() => store.edit(EMPTY_BASE.replace('Table', 'Unsafe'))).toThrow('still loading')
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
     await store.dispose()
   })
 
@@ -252,14 +252,14 @@ describe('durable Base recovery', () => {
     initRuntime(mock.api)
     const store = baseStore('Test.base')
     await store.load()
-    await mock.api.vault.drafts.write('Test.base', 'editor', { content: 'Other owner', baseline: null }, null)
-    const read = vi.spyOn(mock.api.vault.drafts, 'read')
+    await mock.api.realm.drafts.write('Test.base', 'editor', { content: 'Other owner', baseline: null }, null)
+    const read = vi.spyOn(mock.api.realm.drafts, 'read')
     store.edit(EMPTY_BASE.replace('Table', 'Local preserved'))
     await expect(store.flush()).rejects.toThrow('another session')
     await expect(store.flush(true)).rejects.toThrow('another session')
     expect(read).not.toHaveBeenCalled()
     expect(store.snapshot.content).toContain('Local preserved')
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
     await store.dispose()
   })
 
@@ -268,8 +268,8 @@ describe('durable Base recovery', () => {
     initRuntime(mock.api)
     const store = baseStore('Test.base')
     await store.load()
-    const write = mock.api.vault.drafts.write
-    const journal = vi.spyOn(mock.api.vault.drafts, 'write').mockImplementationOnce(async (...args) => {
+    const write = mock.api.realm.drafts.write
+    const journal = vi.spyOn(mock.api.realm.drafts, 'write').mockImplementationOnce(async (...args) => {
       await write(...args)
       throw Object.assign(new Error('Journal acknowledgement lost'), { outcomeUnknown: true, retryable: false })
     })
@@ -277,8 +277,8 @@ describe('durable Base recovery', () => {
     await expect(store.flush()).rejects.toThrow('acknowledgement lost')
     await expect(store.flush(true)).rejects.toThrow('acknowledgement lost')
     expect(journal).toHaveBeenCalledOnce()
-    expect((await mock.api.vault.drafts.read('Test.base', 'editor'))?.draft.content).toContain('Uncertain preserved')
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect((await mock.api.realm.drafts.read('Test.base', 'editor'))?.draft.content).toContain('Uncertain preserved')
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
     await store.dispose()
   })
 
@@ -304,9 +304,9 @@ describe('durable Base recovery', () => {
     expect(recoveredA.snapshot.content).toContain('First recovered')
     expect(recoveredB.snapshot.content).toContain('Second recovered')
     await recoveredA.flush()
-    expect(await fresh.api.vault.readFile('Note.md')).toBe(note.replace('Table', 'First recovered'))
+    expect(await fresh.api.realm.readFile('Note.md')).toBe(note.replace('Table', 'First recovered'))
     await expect(recoveredB.flush()).rejects.toThrow('draft is preserved')
-    expect((await fresh.api.vault.drafts.read('Note.md', 'inline'))?.draft.content).toContain('Second recovered')
+    expect((await fresh.api.realm.drafts.read('Note.md', 'inline'))?.draft.content).toContain('Second recovered')
     await Promise.all([recoveredA.dispose(), recoveredB.dispose()])
   })
 })
@@ -322,18 +322,18 @@ describe('captured Base document lifetimes', () => {
     await act(async () => { await hook.result.current.store!.flush() })
     act(() => savedPatch({ name: 'Second' }))
     await act(async () => { await hook.result.current.store!.flush() })
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Second')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Second')
     await act(async () => {
-      const current = await mock.api.vault.readFileBaseline('Test.base')
-      await mock.api.vault.writeFileGuarded('Test.base', EMPTY_BASE.replace('Table', 'External'), current!.baseline)
+      const current = await mock.api.realm.readFileBaseline('Test.base')
+      await mock.api.realm.writeFileGuarded('Test.base', EMPTY_BASE.replace('Table', 'External'), current!.baseline)
       await hook.result.current.store!.load()
     })
-    const writes = vi.mocked(mock.api.vault.writeFileGuarded).mock.calls.length
+    const writes = vi.mocked(mock.api.realm.writeFileGuarded).mock.calls.length
     act(() => savedPatch({ name: 'Stale popover' }))
     await act(async () => { await hook.result.current.store!.flush() })
     expect(hook.result.current.error).toContain('Reopen its configuration')
-    expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledTimes(writes)
-    expect(await mock.api.vault.readFile('Test.base')).toContain('External')
+    expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledTimes(writes)
+    expect(await mock.api.realm.readFile('Test.base')).toContain('External')
     hook.unmount()
   })
 
@@ -343,11 +343,11 @@ describe('captured Base document lifetimes', () => {
     const store = baseStore('Test.base')
     await store.load()
     const held = deferred()
-    const write = vi.mocked(a.api.vault.writeFileGuarded).getMockImplementation()!
-    vi.mocked(a.api.vault.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = vi.mocked(a.api.realm.writeFileGuarded).getMockImplementation()!
+    vi.mocked(a.api.realm.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     store.edit(EMPTY_BASE.replace('Table', 'First'))
     const pending = store.flush().then(() => 'saved', () => 'cancelled')
-    await vi.waitFor(() => expect(a.api.vault.writeFileGuarded).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(a.api.realm.writeFileGuarded).toHaveBeenCalledTimes(1))
     store.edit(EMPTY_BASE.replace('Table', 'Newest'))
     const published = vi.fn()
     store.subscribe(published)
@@ -363,18 +363,18 @@ describe('captured Base document lifetimes', () => {
     held.resolve()
     await dispose
     expect(await pending).toBe('cancelled')
-    expect(a.api.vault.writeFileGuarded).toHaveBeenCalledTimes(1)
-    expect(b.api.vault.writeFileGuarded).not.toHaveBeenCalled()
-    expect(await a.api.vault.readFile('Test.base')).toContain('First')
+    expect(a.api.realm.writeFileGuarded).toHaveBeenCalledTimes(1)
+    expect(b.api.realm.writeFileGuarded).not.toHaveBeenCalled()
+    expect(await a.api.realm.readFile('Test.base')).toContain('First')
     expect(store.snapshot.content).toContain('Newest')
     expect(published).not.toHaveBeenCalled()
     await recovered.load()
     expect(recovered.snapshot.content).toContain('Newest')
     expect(recovered.snapshot.file?.content).toContain('First')
-    expect(recovered.snapshot.file?.baseline).toEqual((await a.api.vault.readFileBaseline('Test.base'))?.baseline)
+    expect(recovered.snapshot.file?.baseline).toEqual((await a.api.realm.readFileBaseline('Test.base'))?.baseline)
     await recovered.flush()
-    expect(await a.api.vault.readFile('Test.base')).toContain('Newest')
-    expect(a.api.vault.writeFileGuarded).toHaveBeenCalledTimes(2)
+    expect(await a.api.realm.readFile('Test.base')).toContain('Newest')
+    expect(a.api.realm.writeFileGuarded).toHaveBeenCalledTimes(2)
     await recovered.dispose()
   })
 
@@ -384,11 +384,11 @@ describe('captured Base document lifetimes', () => {
     const original = baseStore('Test.base')
     await original.load()
     const held = deferred()
-    const write = vi.mocked(mock.api.vault.writeFileGuarded).getMockImplementation()!
-    vi.mocked(mock.api.vault.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = vi.mocked(mock.api.realm.writeFileGuarded).getMockImplementation()!
+    vi.mocked(mock.api.realm.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     original.edit(EMPTY_BASE.replace('Table', 'Accepted'))
     const saving = original.flush().catch(() => {})
-    await vi.waitFor(() => expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledOnce())
     original.edit(EMPTY_BASE.replace('Table', 'Retained'))
     void session.dispose()
     initRuntime(mock.api)
@@ -401,7 +401,7 @@ describe('captured Base document lifetimes', () => {
     expect(intermediate.snapshot.loaded).toBe(false)
     expect(recovered.snapshot.content).toContain('Retained')
     await recovered.flush()
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Retained')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Retained')
     await recovered.dispose()
   })
 
@@ -420,51 +420,51 @@ describe('captured Base document lifetimes', () => {
     await recovered.load()
     expect(recovered.snapshot.content).toContain('Still reachable')
     await recovered.flush()
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Still reachable')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Still reachable')
     await recovered.dispose()
   })
 
   it('keeps recovery and baselines separate across roots when the same runtime returns A→B→A', async () => {
     const rootA = { path: '/fixture/a', name: 'a', displayName: 'a' }
     const rootB = { path: '/fixture/b', name: 'b', displayName: 'b' }
-    const mock = createMockValleyApi({ manifest: { id: 'bases' }, vault: rootA, files: { 'Test.base': EMPTY_BASE } })
-    const other = createMockValleyApi({ manifest: { id: 'bases' }, vault: rootB, files: { 'Test.base': EMPTY_BASE.replace('Table', 'B original') } })
-    const readA = mock.api.vault.readFileBaseline
-    const writeA = vi.mocked(mock.api.vault.writeFileGuarded).getMockImplementation()!
-    const draftsA = { ...mock.api.vault.drafts }
-    vi.spyOn(mock.api.vault.drafts, 'read').mockImplementation((...args) => mock.api.getState().vault?.path === rootA.path ? draftsA.read(...args) : other.api.vault.drafts.read(...args))
-    vi.spyOn(mock.api.vault.drafts, 'write').mockImplementation((...args) => mock.api.getState().vault?.path === rootA.path ? draftsA.write(...args) : other.api.vault.drafts.write(...args))
-    vi.spyOn(mock.api.vault.drafts, 'clear').mockImplementation((...args) => mock.api.getState().vault?.path === rootA.path ? draftsA.clear(...args) : other.api.vault.drafts.clear(...args))
-    vi.spyOn(mock.api.vault, 'readFileBaseline').mockImplementation((...args) => mock.api.getState().vault?.path === rootA.path ? readA(...args) : other.api.vault.readFileBaseline(...args))
-    vi.mocked(mock.api.vault.writeFileGuarded).mockImplementation((...args) => mock.api.getState().vault?.path === rootA.path ? writeA(...args) : other.api.vault.writeFileGuarded(...args))
+    const mock = createMockValleyApi({ manifest: { id: 'bases' }, realm: rootA, files: { 'Test.base': EMPTY_BASE } })
+    const other = createMockValleyApi({ manifest: { id: 'bases' }, realm: rootB, files: { 'Test.base': EMPTY_BASE.replace('Table', 'B original') } })
+    const readA = mock.api.realm.readFileBaseline
+    const writeA = vi.mocked(mock.api.realm.writeFileGuarded).getMockImplementation()!
+    const draftsA = { ...mock.api.realm.drafts }
+    vi.spyOn(mock.api.realm.drafts, 'read').mockImplementation((...args) => mock.api.getState().realm?.path === rootA.path ? draftsA.read(...args) : other.api.realm.drafts.read(...args))
+    vi.spyOn(mock.api.realm.drafts, 'write').mockImplementation((...args) => mock.api.getState().realm?.path === rootA.path ? draftsA.write(...args) : other.api.realm.drafts.write(...args))
+    vi.spyOn(mock.api.realm.drafts, 'clear').mockImplementation((...args) => mock.api.getState().realm?.path === rootA.path ? draftsA.clear(...args) : other.api.realm.drafts.clear(...args))
+    vi.spyOn(mock.api.realm, 'readFileBaseline').mockImplementation((...args) => mock.api.getState().realm?.path === rootA.path ? readA(...args) : other.api.realm.readFileBaseline(...args))
+    vi.mocked(mock.api.realm.writeFileGuarded).mockImplementation((...args) => mock.api.getState().realm?.path === rootA.path ? writeA(...args) : other.api.realm.writeFileGuarded(...args))
     const origin = initRuntime(mock.api)
     const first = baseStore('Test.base')
     await first.load()
     first.edit(EMPTY_BASE.replace('Table', 'A draft'))
-    mock.emitState({ vault: rootB })
+    mock.emitState({ realm: rootB })
     initRuntime(mock.api)
     const second = baseStore('Test.base')
     await second.load()
     expect(second.snapshot.content, second.snapshot.error).toContain('B original')
     second.edit(EMPTY_BASE.replace('Table', 'B draft'))
-    mock.emitState({ vault: rootA })
+    mock.emitState({ realm: rootA })
     initRuntime(mock.api)
     const recoveredA = baseStore('Test.base')
     await recoveredA.load()
     expect(recoveredA.snapshot.content).toContain('A draft')
     await recoveredA.flush()
-    expect(await mock.api.vault.readFile('Test.base')).toContain('A draft')
-    expect(await other.api.vault.readFile('Test.base')).toContain('B original')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('A draft')
+    expect(await other.api.realm.readFile('Test.base')).toContain('B original')
     expect(origin.isActive()).toBe(false)
     expect(() => first.edit(EMPTY_BASE.replace('Table', 'Stale'))).toThrow('session has ended')
-    mock.emitState({ vault: rootB })
+    mock.emitState({ realm: rootB })
     initRuntime(mock.api)
     const recoveredB = baseStore('Test.base')
     await recoveredB.load()
     expect(recoveredB.snapshot.content).toContain('B draft')
     await recoveredB.flush()
-    expect(await other.api.vault.readFile('Test.base')).toContain('B draft')
-    expect(await mock.api.vault.readFile('Test.base')).toContain('A draft')
+    expect(await other.api.realm.readFile('Test.base')).toContain('B draft')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('A draft')
     await recoveredB.dispose()
   })
 
@@ -474,11 +474,11 @@ describe('captured Base document lifetimes', () => {
     const original = baseStore('Test.base')
     await original.load()
     const held = deferred()
-    const write = vi.mocked(mock.api.vault.writeFileGuarded).getMockImplementation()!
-    vi.mocked(mock.api.vault.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = vi.mocked(mock.api.realm.writeFileGuarded).getMockImplementation()!
+    vi.mocked(mock.api.realm.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     original.edit(EMPTY_BASE.replace('Table', 'Accepted'))
     const saving = original.flush().catch(() => {})
-    await vi.waitFor(() => expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledOnce())
     original.edit(EMPTY_BASE.replace('Table', 'Newest'))
     const disposing = original.dispose()
     const recovered = baseStore('Test.base')
@@ -491,7 +491,7 @@ describe('captured Base document lifetimes', () => {
     expect(recovered.snapshot.content).toContain('Newest')
     expect(recovered.snapshot.file?.content).toContain('Accepted')
     await recovered.flush()
-    expect(await mock.api.vault.readFile('Test.base')).toContain('Newest')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('Newest')
     await recovered.dispose()
   })
 
@@ -503,15 +503,15 @@ describe('captured Base document lifetimes', () => {
     const baseline = original.snapshot.file!.baseline
     original.edit(EMPTY_BASE.replace('Table', 'Recovered draft'))
     await original.dispose()
-    const disk = await mock.api.vault.readFileBaseline('Test.base')
-    await mock.api.vault.writeFileGuarded('Test.base', EMPTY_BASE.replace('Table', 'External'), disk!.baseline)
+    const disk = await mock.api.realm.readFileBaseline('Test.base')
+    await mock.api.realm.writeFileGuarded('Test.base', EMPTY_BASE.replace('Table', 'External'), disk!.baseline)
     initRuntime(mock.api)
     const recovered = baseStore('Test.base')
     await recovered.load()
     expect(recovered.snapshot.file!.baseline).toEqual(baseline)
     await expect(recovered.flush()).rejects.toThrow('draft is preserved')
     expect(recovered.snapshot.content).toContain('Recovered draft')
-    expect(await mock.api.vault.readFile('Test.base')).toContain('External')
+    expect(await mock.api.realm.readFile('Test.base')).toContain('External')
     await recovered.dispose()
   })
 
@@ -524,11 +524,11 @@ describe('captured Base document lifetimes', () => {
     const original = baseStore('Review.md', EMPTY_BASE)
     await original.load()
     const held = deferred()
-    const write = vi.mocked(mock.api.vault.writeFileGuarded).getMockImplementation()!
-    vi.mocked(mock.api.vault.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = vi.mocked(mock.api.realm.writeFileGuarded).getMockImplementation()!
+    vi.mocked(mock.api.realm.writeFileGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     original.edit(first)
     const saving = original.flush().catch(() => {})
-    await vi.waitFor(() => expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledOnce())
     original.edit(latest)
     initRuntime(mock.api)
     const recovered = baseStore('Review.md', first)
@@ -538,7 +538,7 @@ describe('captured Base document lifetimes', () => {
     expect(recovered.snapshot.content).toBe(latest)
     expect(recovered.snapshot.file?.content).toBe(first)
     await recovered.flush()
-    expect(await mock.api.vault.readFile('Review.md')).toBe(note.replace('Table', 'Recovered inline'))
+    expect(await mock.api.realm.readFile('Review.md')).toBe(note.replace('Table', 'Recovered inline'))
     await recovered.dispose()
   })
 
@@ -546,12 +546,12 @@ describe('captured Base document lifetimes', () => {
     const mock = fixture()
     const session = initRuntime(mock.api)
     const held = deferred()
-    const read = mock.api.vault.readFileBaseline
-    vi.spyOn(mock.api.vault, 'readFileBaseline').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
+    const read = mock.api.realm.readFileBaseline
+    vi.spyOn(mock.api.realm, 'readFileBaseline').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
     const store = baseStore('Test.base')
     const published = vi.fn()
     store.subscribe(published)
-    await vi.waitFor(() => expect(mock.api.vault.readFileBaseline).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(mock.api.realm.readFileBaseline).toHaveBeenCalledTimes(1))
     let drained = false
     const disposing = session.dispose().then(() => { drained = true })
     await Promise.resolve()
@@ -561,7 +561,7 @@ describe('captured Base document lifetimes', () => {
     expect(store.snapshot.loaded).toBe(false)
     expect(published).not.toHaveBeenCalled()
     await store.load()
-    expect(mock.api.vault.readFileBaseline).toHaveBeenCalledTimes(1)
+    expect(mock.api.realm.readFileBaseline).toHaveBeenCalledTimes(1)
   })
 
   it('rejects saved document undo callbacks after re-registration', async () => {
@@ -573,20 +573,20 @@ describe('captured Base document lifetimes', () => {
     await store.flush()
     const undo = mock.undoActions[0]
     initRuntime(mock.api)
-    vi.mocked(mock.api.vault.writeFileGuarded).mockClear()
+    vi.mocked(mock.api.realm.writeFileGuarded).mockClear()
     expect(await undo.undo()).toMatchObject({ ok: false })
     expect(await undo.redo!()).toMatchObject({ ok: false })
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
 
-  it('remembers a vault transition even when the original root returns', async () => {
+  it('remembers a realm transition even when the original root returns', async () => {
     const mock = fixture()
     const session = initRuntime(mock.api)
-    mock.emitState({ vault: { path: '/fixture/b', name: 'b', displayName: 'b' } })
-    mock.emitState({ vault: null })
+    mock.emitState({ realm: { path: '/fixture/b', name: 'b', displayName: 'b' } })
+    mock.emitState({ realm: null })
     expect(session.isActive()).toBe(false)
     await expect(session.run(() => createBase(mock.api, undefined, session))).rejects.toThrow('session has ended')
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
 })
 
@@ -601,11 +601,11 @@ describe('property operation ownership', () => {
     await expect(previous.editProperty('Note.md', 'price', 8)).rejects.toThrow('editor has closed')
     previous.openFile('Note.md')
     await previous.newNote()
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
-    expect(mock.api.vault.writeTextDocumentGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeTextDocumentGuarded).not.toHaveBeenCalled()
     expect(mock.api.workspace.openFile).not.toHaveBeenCalled()
     await act(async () => { await hook.result.current.editProperty('Note.md', 'price', 9) })
-    expect(await mock.api.vault.readFile('Note.md')).toContain('price: 9')
+    expect(await mock.api.realm.readFile('Note.md')).toContain('price: 9')
     hook.unmount()
   })
 
@@ -615,8 +615,8 @@ describe('property operation ownership', () => {
     const publish = vi.fn()
     const owner = createPropertyMutations(session, publish)
     const held = deferred()
-    const read = mock.api.vault.readTextDocument
-    vi.spyOn(mock.api.vault, 'readTextDocument').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
+    const read = mock.api.realm.readTextDocument
+    vi.spyOn(mock.api.realm, 'readTextDocument').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
     const operation = owner.editProperty('Note.md', 'price', 2).then(() => 'saved', () => 'closed')
     let drained = false
     const disposal = owner.dispose().then(() => { drained = true })
@@ -625,7 +625,7 @@ describe('property operation ownership', () => {
     held.resolve()
     await disposal
     expect(await operation).toBe('closed')
-    expect(mock.api.vault.writeTextDocumentGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeTextDocumentGuarded).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
   })
 
@@ -635,10 +635,10 @@ describe('property operation ownership', () => {
     const publish = vi.fn()
     const owner = createPropertyMutations(session, publish)
     const held = deferred()
-    const write = vi.mocked(a.api.vault.writeTextDocumentGuarded).getMockImplementation()!
-    vi.mocked(a.api.vault.writeTextDocumentGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = vi.mocked(a.api.realm.writeTextDocumentGuarded).getMockImplementation()!
+    vi.mocked(a.api.realm.writeTextDocumentGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     const operation = owner.editProperty('Note.md', 'price', 3)
-    await vi.waitFor(() => expect(a.api.vault.writeTextDocumentGuarded).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(a.api.realm.writeTextDocumentGuarded).toHaveBeenCalledTimes(1))
     let drained = false
     const disposal = session.dispose().then(() => { drained = true })
     const b = fixture()
@@ -648,9 +648,9 @@ describe('property operation ownership', () => {
     held.resolve()
     await operation
     await disposal
-    expect(await a.api.vault.readFile('Note.md')).toContain('price: 3')
+    expect(await a.api.realm.readFile('Note.md')).toContain('price: 3')
     expect(a.undoActions).toHaveLength(0)
-    expect(b.api.vault.writeTextDocumentGuarded).not.toHaveBeenCalled()
+    expect(b.api.realm.writeTextDocumentGuarded).not.toHaveBeenCalled()
     expect(publish).not.toHaveBeenCalled()
   })
 
@@ -659,50 +659,50 @@ describe('property operation ownership', () => {
     const session = initRuntime(mock.api)
     const owner = createPropertyMutations(session, vi.fn())
     const held = deferred()
-    const read = mock.api.vault.readTextDocument
-    vi.spyOn(mock.api.vault, 'readTextDocument').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
+    const read = mock.api.realm.readTextDocument
+    vi.spyOn(mock.api.realm, 'readTextDocument').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
     const values = ['accepted']
     const operation = owner.editProperty('Note.md', 'tags', values)
     values.push('later mutation')
     held.resolve()
     await operation
-    expect(await mock.api.vault.readFile('Note.md')).toContain('accepted')
-    expect(await mock.api.vault.readFile('Note.md')).not.toContain('later mutation')
+    expect(await mock.api.realm.readFile('Note.md')).toContain('accepted')
+    expect(await mock.api.realm.readFile('Note.md')).not.toContain('later mutation')
     await owner.dispose()
     const undo = mock.undoActions[0]
     expect(await undo.undo()).toMatchObject({ ok: true })
-    expect(await mock.api.vault.readFile('Note.md')).not.toContain('tags:')
+    expect(await mock.api.realm.readFile('Note.md')).not.toContain('tags:')
     expect(await undo.redo!()).toMatchObject({ ok: true })
     initRuntime(fixture().api)
-    vi.mocked(mock.api.vault.writeTextDocumentGuarded).mockClear()
+    vi.mocked(mock.api.realm.writeTextDocumentGuarded).mockClear()
     expect(await undo.undo()).toMatchObject({ ok: false })
-    expect(mock.api.vault.writeTextDocumentGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeTextDocumentGuarded).not.toHaveBeenCalled()
   })
 
   it('refuses undo after a note was edited and reverted to identical text', async () => {
     const mock = fixture()
     const owner = createPropertyMutations(initRuntime(mock.api), vi.fn())
     await owner.editProperty('Note.md', 'price', 2)
-    const saved = await mock.api.vault.readFile('Note.md')
-    await mock.api.vault.writeFile('Note.md', saved + 'temporary typing')
-    await mock.api.vault.writeFile('Note.md', saved)
+    const saved = await mock.api.realm.readFile('Note.md')
+    await mock.api.realm.writeFile('Note.md', saved + 'temporary typing')
+    await mock.api.realm.writeFile('Note.md', saved)
     expect(await mock.undoActions[0].undo()).toMatchObject({ ok: false })
-    expect(await mock.api.vault.readFile('Note.md')).toBe(saved)
-    expect(mock.api.vault.writeTextDocumentGuarded).toHaveBeenCalledTimes(2)
+    expect(await mock.api.realm.readFile('Note.md')).toBe(saved)
+    expect(mock.api.realm.writeTextDocumentGuarded).toHaveBeenCalledTimes(2)
   })
 
   it('edits the authenticated editor snapshot and preserves its unsaved body during undo', async () => {
     const mock = fixture()
     const owner = createPropertyMutations(initRuntime(mock.api), vi.fn())
-    const original = await mock.api.vault.readFile('Note.md')
+    const original = await mock.api.realm.readFile('Note.md')
     const dirty = original + 'Unsaved editor body\n'
-    const read = mock.api.vault.readTextDocument
-    vi.spyOn(mock.api.vault, 'readTextDocument').mockImplementationOnce(async (...args) => ({ ...(await read(...args))!, content: dirty }))
+    const read = mock.api.realm.readTextDocument
+    vi.spyOn(mock.api.realm, 'readTextDocument').mockImplementationOnce(async (...args) => ({ ...(await read(...args))!, content: dirty }))
     await owner.editProperty('Note.md', 'price', 4)
-    expect(await mock.api.vault.readFile('Note.md')).toContain('Unsaved editor body')
+    expect(await mock.api.realm.readFile('Note.md')).toContain('Unsaved editor body')
     expect(await mock.undoActions[0].undo()).toMatchObject({ ok: true })
-    expect(await mock.api.vault.readFile('Note.md')).toBe(dirty)
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(await mock.api.realm.readFile('Note.md')).toBe(dirty)
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
 
   it('waits for an accepted undo read and prevents its late write after revocation', async () => {
@@ -712,8 +712,8 @@ describe('property operation ownership', () => {
     await owner.editProperty('Note.md', 'price', 2)
     await owner.dispose()
     const held = deferred()
-    const read = mock.api.vault.readTextDocument
-    vi.spyOn(mock.api.vault, 'readTextDocument').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
+    const read = mock.api.realm.readTextDocument
+    vi.spyOn(mock.api.realm, 'readTextDocument').mockImplementationOnce(async (...args) => { const result = await read(...args); await held.promise; return result })
     const undo = mock.undoActions[0].undo()
     let drained = false
     const disposal = session.dispose().then(() => { drained = true })
@@ -722,21 +722,21 @@ describe('property operation ownership', () => {
     held.resolve()
     expect(await undo).toMatchObject({ ok: false })
     await disposal
-    expect(mock.api.vault.writeTextDocumentGuarded).toHaveBeenCalledTimes(1)
+    expect(mock.api.realm.writeTextDocumentGuarded).toHaveBeenCalledTimes(1)
   })
 
   it('stops filename retries when note creation loses its view', async () => {
     const mock = fixture()
     const owner = createPropertyMutations(initRuntime(mock.api), vi.fn())
     const held = deferred()
-    vi.mocked(mock.api.vault.writeFileGuarded).mockImplementationOnce(async () => { await held.promise; return { ok: false, reason: 'conflict', current: null } })
+    vi.mocked(mock.api.realm.writeFileGuarded).mockImplementationOnce(async () => { await held.promise; return { ok: false, reason: 'conflict', current: null } })
     const operation = owner.newNote([], 'Test.base').then(() => 'created', () => 'closed')
-    await vi.waitFor(() => expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledTimes(1))
     const disposal = owner.dispose()
     held.resolve()
     expect(await operation).toBe('closed')
     await disposal
-    expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledTimes(1)
+    expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledTimes(1)
     expect(mock.api.workspace.openFile).not.toHaveBeenCalled()
   })
 
@@ -746,10 +746,10 @@ describe('property operation ownership', () => {
     const { currentSession } = await import('../src/runtime')
     const owner = createPropertyMutations(currentSession(), vi.fn())
     const held = deferred()
-    const write = vi.mocked(mock.api.vault.writeTextDocumentGuarded).getMockImplementation()!
-    vi.mocked(mock.api.vault.writeTextDocumentGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
+    const write = vi.mocked(mock.api.realm.writeTextDocumentGuarded).getMockImplementation()!
+    vi.mocked(mock.api.realm.writeTextDocumentGuarded).mockImplementationOnce(async (...args) => { await held.promise; return write(...args) })
     const operation = owner.editProperty('Note.md', 'price', 4)
-    await vi.waitFor(() => expect(mock.api.vault.writeTextDocumentGuarded).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(mock.api.realm.writeTextDocumentGuarded).toHaveBeenCalledTimes(1))
     let prepared = false
     const unload = mock.runBeforeUnload().then(() => { prepared = true })
     await Promise.resolve()
@@ -771,17 +771,17 @@ describe('registered creation lifetime', () => {
     const b = fixture()
     initRuntime(b.api)
     await expect(command.run({ folder: '' }, {} as never)).rejects.toThrow('session has ended')
-    expect(mock.api.vault.writeFileGuarded).not.toHaveBeenCalled()
-    expect(b.api.vault.writeFileGuarded).not.toHaveBeenCalled()
+    expect(mock.api.realm.writeFileGuarded).not.toHaveBeenCalled()
+    expect(b.api.realm.writeFileGuarded).not.toHaveBeenCalled()
   })
 
   it('stops base filename retries and drains the accepted request before disposal resolves', async () => {
     const mock = fixture()
     const session = initRuntime(mock.api)
     const held = deferred()
-    vi.mocked(mock.api.vault.writeFileGuarded).mockImplementationOnce(async () => { await held.promise; return { ok: false, reason: 'conflict', current: null } })
+    vi.mocked(mock.api.realm.writeFileGuarded).mockImplementationOnce(async () => { await held.promise; return { ok: false, reason: 'conflict', current: null } })
     const operation = session.run(() => createBase(mock.api, undefined, session)).then(() => 'created', () => 'revoked')
-    await vi.waitFor(() => expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledTimes(1))
     let drained = false
     const disposal = session.dispose().then(() => { drained = true })
     await Promise.resolve()
@@ -789,7 +789,7 @@ describe('registered creation lifetime', () => {
     held.resolve()
     expect(await operation).toBe('revoked')
     await disposal
-    expect(mock.api.vault.writeFileGuarded).toHaveBeenCalledTimes(1)
+    expect(mock.api.realm.writeFileGuarded).toHaveBeenCalledTimes(1)
     expect(mock.api.workspace.openFile).not.toHaveBeenCalled()
   })
 })
