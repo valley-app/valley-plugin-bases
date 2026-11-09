@@ -37,6 +37,7 @@ export function register(api: ValleyPluginApi): () => Promise<void> {
     registerCreate({
       id: 'create',
       outputSchema: { type: 'object', properties: { relPath: { type: 'string', minLength: 1, maxLength: 4096 } }, required: ['relPath'], additionalProperties: false },
+      menu: { group: 'create', order: 10, label: 'New Base', labelKey: 'menu.newBase' },
       label: 'Bases: Create new base',
       labelKey: 'bases.command.create',
       sideEffect: 'write',

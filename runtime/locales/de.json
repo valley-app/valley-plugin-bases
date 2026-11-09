@@ -215,5 +215,6 @@
   "auto.f056d58f324e": "The base changed after undo.",
   "auto.f7dbc5e55b77": "Table of realm files",
   "auto.fa7374513f37": "[latitude, longitude]",
-  "auto.fcc570f94cb3": "Read a Base file and its revision baseline"
+  "auto.fcc570f94cb3": "Read a Base file and its revision baseline",
+  "menu.newBase": "Neue Base"
 }
