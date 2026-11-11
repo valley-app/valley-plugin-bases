@@ -72,7 +72,7 @@ export function CardsView({ controller, view, rows, actions }: { controller: Bas
         onContextMenu={(event) => {
           event.preventDefault()
           openMenuAt([
-            { id: 'open', label: text('open'), onSelect: () => actions.openFile(row.id) },
+            { id: 'open', label: text('open'), onSelect: (context?: { newTab?: boolean }) => actions.openFile(row.id, context?.newTab ? { metaKey: true, ctrlKey: true } : undefined) },
             { id: 'open-tab', label: text('openInNewTab'), onSelect: () => void api.workspace.openFile(row.id, undefined, { newTab: true }) },
           ], event.clientX, event.clientY)
         }}

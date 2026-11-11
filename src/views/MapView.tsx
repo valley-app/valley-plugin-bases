@@ -330,7 +330,7 @@ export function MapView({ controller, view, rows, actions, embedded }: { control
       if (!point) return
       const [lat, lng] = point.coordinates
       openMenuAt([
-        { id: 'open', label: text('open'), onSelect: () => live.current.actions.openFile(point.row.id) },
+        { id: 'open', label: text('open'), onSelect: (context?: { newTab?: boolean }) => live.current.actions.openFile(point.row.id, context?.newTab ? { metaKey: true, ctrlKey: true } : undefined) },
         { id: 'open-tab', label: text('openInNewTab'), onSelect: () => void api.workspace.openFile(point.row.id, undefined, { newTab: true }) },
         { id: 'copy-coordinates', label: text('copyCoordinates'), onSelect: () => void controller.api.ui.writeClipboardText(`${lat}, ${lng}`) },
       ], event.originalEvent.clientX, event.originalEvent.clientY)

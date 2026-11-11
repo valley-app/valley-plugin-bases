@@ -7,7 +7,7 @@ import type { BaseCell } from './engine/types'
 
 export interface CellActions {
   resolveLink: (reference: string) => string | null
-  openFile: (path: string, event?: React.MouseEvent) => void
+  openFile: (path: string, event?: { metaKey: boolean; ctrlKey: boolean }) => void
 }
 
 const pad = (value: number): string => String(value).padStart(2, '0')

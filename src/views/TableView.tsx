@@ -295,7 +295,7 @@ export function TableView({ controller, view, rows, actions }: { controller: Bas
         if ((event.target as HTMLElement).closest('input')) return
         event.preventDefault()
         openMenuAt([
-          { id: 'open', label: text('open'), onSelect: () => actions.openFile(row.id) },
+          { id: 'open', label: text('open'), onSelect: (context?: { newTab?: boolean }) => actions.openFile(row.id, context?.newTab ? { metaKey: true, ctrlKey: true } : undefined) },
           { id: 'open-tab', label: text('openInNewTab'), onSelect: () => void api.workspace.openFile(row.id, undefined, { newTab: true }) },
         ], event.clientX, event.clientY)
       }}
