@@ -288,34 +288,29 @@ function DateEditor({ widget, value, label, readonly, onSave, editing, onEditing
   const time = widget === 'datetime'
   const raw = typeof value === 'string' ? value : ''
   const inputValue = time ? raw.replace(' ', 'T').slice(0, 16) : raw.slice(0, 10)
-  const input = React.useRef<HTMLInputElement>(null)
-  const finish = (next: string): void => {
+  const anchor = React.useRef<HTMLSpanElement>(null)
+  const picker = React.useRef<AbortController | null>(null)
+  const finish = (next: string | null): void => {
     if (!guard.claim()) return
     onEditingChange(false)
-    if (next !== inputValue) commit(next || null)
+    if (next !== null && next !== inputValue) commit(next || null)
   }
-  const guard = useFinish(editing && !readonly, closeRef, () => finish(input.current?.value ?? inputValue))
-  if (editing && !readonly) {
-    return (
-      <input
-        ref={input}
-        className="base-cell-input"
-        autoFocus
-        type={time ? 'datetime-local' : 'date'}
-        aria-label={label}
-        defaultValue={inputValue}
-        onFocus={guard.rearm}
-        onBlur={(event) => finish(event.target.value)}
-        onKeyDown={(event) => {
-          event.stopPropagation()
-          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
-          if (event.key === 'Escape') { event.preventDefault(); onEditingChange(false) }
-        }}
-      />
-    )
-  }
+  // Closing the edit from the table closes the open picker, which then resolves its last pick.
+  const guard = useFinish(editing && !readonly, closeRef, () => { if (picker.current) picker.current.abort(); else finish(null) })
+  const latest = React.useRef(finish)
+  latest.current = finish
+  React.useEffect(() => {
+    if (!editing || readonly || !anchor.current) return
+    const controller = new AbortController()
+    picker.current = controller
+    void api.ui.pickDateTime({ mode: time ? 'datetime' : 'date', value: inputValue, ariaLabel: label, signal: controller.signal }, { anchor: anchor.current, align: 'start', gap: 4 })
+      .then((next) => { if (picker.current === controller) picker.current = null; latest.current(next) })
+    return () => { if (picker.current === controller) { picker.current = null; controller.abort() } }
+    // The picker opens once per edit; the value it starts from is the one shown when editing began.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, readonly])
   return (
-    <span className="base-cell-text" title={error || undefined}>
+    <span ref={anchor} className="base-cell-text" title={error || undefined}>
       {raw ? <><Icon name={time ? 'clock' : 'calendar'} size={13} className="base-date-icon" />{displayDate(raw, time)}</> : null}
     </span>
   )

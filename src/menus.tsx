@@ -419,6 +419,7 @@ function buildSimple(filter: SimpleFilter, kind: string): string {
 }
 
 function FilterRow({ value, label, controller, onChange, onRemove, actionPath }: { value: string; label: string; controller: BaseController; onChange: (value: string) => void; onRemove: () => void; actionPath: string }) {
+  const { DateField } = api.ui.settings
   const parsed = parseSimple(value)
   const [advanced, setAdvanced] = React.useState(!parsed && value !== '')
   const [draft, setDraft] = React.useState(value)
@@ -467,8 +468,10 @@ function FilterRow({ value, label, controller, onChange, onRemove, actionPath }:
             {!operator.noValue && (
               kind === 'checkbox' && !operator.fn ? (
                 <input type="checkbox" className="base-checkbox" disabled={readonly} checked={filter.value === 'true'} onChange={(event) => commit({ ...filter, value: event.target.checked ? 'true' : 'false' })} />
+              ) : kind === 'date' && !operator.fn ? (
+                <DateField className="base-filter-value" ariaLabel={text('value')} disabled={readonly} value={filter.value} onChange={(next) => commit({ ...filter, value: next })} />
               ) : (
-                <input className="base-filter-value" type={kind === 'number' && !operator.fn ? 'number' : kind === 'date' && !operator.fn ? 'date' : 'text'} disabled={readonly} value={filter.value}
+                <input className="base-filter-value" type={kind === 'number' && !operator.fn ? 'number' : 'text'} disabled={readonly} value={filter.value}
                   onChange={(event) => setFilter({ ...filter, value: event.target.value })} onBlur={() => commit(filter)}
                   onKeyDown={(event) => { if (event.key === 'Enter') commit(filter) }} />
               )

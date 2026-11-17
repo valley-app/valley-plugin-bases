@@ -413,6 +413,27 @@ describe('Base editor', () => {
     expect(await mock.api.realm.readFile('Fern.md')).toContain('# Fern')
   })
 
+  it('edits a date cell in the shared date picker and writes the picked day', async () => {
+    const mock = createMockValleyApi({
+      manifest: { id: 'bases' },
+      files: {
+        'Test.base': 'views:\n  - type: table\n    name: Table\n    order: [file.name, due]\n',
+        'Fern.md': '---\ndue: 2026-11-12\n---\n# Fern\n',
+      },
+      indexEntries: [{ relPath: 'Fern.md', title: 'Fern', kind: 'note', mtimeMs: 1000, frontmatter: { due: '2026-11-12' } }],
+    })
+    register(mock.api)
+    presentPopovers(mock)
+    render(<BaseEditor relPath="Test.base" />)
+    const cell = (await screen.findByText((_, node) => node?.classList.contains('base-cell-text') === true && /2026|12/.test(node.textContent ?? ''))).closest('.base-td') as HTMLElement
+    fireEvent.click(cell)
+    await waitFor(() => expect(mock.pickers).toHaveLength(1))
+    expect(mock.pickers[0]).toMatchObject({ kind: 'datetime', options: { mode: 'date', value: '2026-11-12', signal: expect.any(AbortSignal) } })
+    await act(async () => mock.pickers[0].resolve('2026-11-20'))
+    await waitFor(async () => expect(await mock.api.realm.readFile('Fern.md')).toContain('due: 2026-11-20'))
+    expect(await mock.api.realm.readFile('Fern.md')).toContain('# Fern')
+  })
+
   it('rejects invalid numeric input without corrupting frontmatter', async () => {
     const { mock } = mount()
     fireEvent.click(await priceCell())
